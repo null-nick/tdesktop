@@ -761,7 +761,7 @@ void DcKeyCreator::dhClientParamsAnswered(
 		}
 		attempt->data.new_nonce_buf[32] = bytes::type(1);
 		if (data.vnew_nonce_hash1() != NonceDigest(attempt->data.new_nonce_buf)) {
-			LOG(("AuthKey Error: received new_nonce_hash1 did not match!"));
+		    LOG(("AuthKey Error: received new_nonce_hash1 did not match!"));
 			DEBUG_LOG(("AuthKey Error: received new_nonce_hash1: %1, new_nonce_buf: %2").arg(Logs::mb(&data.vnew_nonce_hash1(), 16).str(), Logs::mb(attempt->data.new_nonce_buf.data(), 41).str()));
 			return failed();
 		}

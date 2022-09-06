@@ -1,4 +1,4 @@
-name: Windows - 64Bit
+name: Windows - Win32.
 
 on:
   push:
@@ -41,12 +41,12 @@ on:
 jobs:
 
   windows:
-    name: Windows-64Bit
+    name: Windows-32Bit
     runs-on: windows-2022
 
     strategy:
       matrix:
-        arch: [x64]
+        arch: [Win32]
 
     env:
       UPLOAD_ARTIFACT: "true"
