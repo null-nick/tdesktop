@@ -174,6 +174,14 @@ void Stories::apply(const MTPDupdateReadStories &data) {
 	bumpReadTill(peerFromUser(data.vuser_id()), data.vmax_id().v);
 }
 
+void Stories::apply(const MTPStoriesStealthMode &stealthMode) {
+	const auto &data = stealthMode.data();
+	_stealthMode = StealthMode{
+		.enabledTill = data.vactive_until_date().value_or_empty(),
+		.cooldownTill = data.vcooldown_until_date().value_or_empty(),
+	};
+}
+
 void Stories::apply(not_null<PeerData*> peer, const MTPUserStories *data) {
 	if (!data) {
 		applyDeletedFromSources(peer->id, StorySourcesList::NotHidden);
@@ -337,7 +345,9 @@ void Stories::parseAndApply(const MTPUserStories &stories) {
 		}
 		sort(list);
 	};
-	if (result.user->isContact()) {
+	if (result.user->isBot()
+		|| result.user->isServiceUser()
+		|| result.user->isContact()) {
 		const auto hidden = result.user->hasStoriesHidden();
 		using List = StorySourcesList;
 		add(hidden ? List::Hidden : List::NotHidden);
@@ -536,6 +546,10 @@ void Stories::loadMore(StorySourcesList list) {
 		}, [](const MTPDstories_allStoriesNotModified &) {
 		});
 
+		result.match([&](const auto &data) {
+			apply(data.vstealth_mode());
+		});
+
 		preloadListsMore();
 	}).fail([=] {
 		_loadMoreRequestId[index] = 0;
@@ -692,10 +706,10 @@ void Stories::applyDeleted(FullStoryId id) {
 	if (i != end(_stories)) {
 		const auto j = i->second.find(id.story);
 		if (j != end(i->second)) {
-			// Duplicated in Stories::apply(peer, const MTPUserStories*).
-			auto story = std::move(j->second);
+			const auto &story = _deletingStories[id] = std::move(j->second);
 			_expiring.remove(story->expires(), story->fullId());
 			i->second.erase(j);
+
 			session().changes().storyUpdated(
 				story.get(),
 				UpdateFlag::Destroyed);
@@ -719,13 +733,25 @@ void Stories::applyDeleted(FullStoryId id) {
 				}
 			}
 			if (_preloading && _preloading->id() == id) {
+				_preloading = nullptr;
 				preloadFinished(id);
 			}
 			_owner->refreshStoryItemViews(id);
 			Assert(!_pollingSettings.contains(story.get()));
+			if (const auto j = _items.find(id.peer); j != end(_items)) {
+				const auto k = j->second.find(id.story);
+				if (k != end(j->second)) {
+					Assert(!k->second.lock());
+					j->second.erase(k);
+					if (j->second.empty()) {
+						_items.erase(j);
+					}
+				}
+			}
 			if (i->second.empty()) {
 				_stories.erase(i);
 			}
+			_deletingStories.remove(id);
 		}
 	}
 }
@@ -823,6 +849,42 @@ std::shared_ptr<HistoryItem> Stories::lookupItem(not_null<Story*> story) {
 		return nullptr;
 	}
 	return j->second.lock();
+}
+
+StealthMode Stories::stealthMode() const {
+	return _stealthMode.current();
+}
+
+rpl::producer<StealthMode> Stories::stealthModeValue() const {
+	return _stealthMode.value();
+}
+
+void Stories::activateStealthMode(Fn<void()> done) {
+	const auto api = &session().api();
+	using Flag = MTPstories_ActivateStealthMode::Flag;
+	api->request(MTPstories_ActivateStealthMode(
+		MTP_flags(Flag::f_past | Flag::f_future)
+	)).done([=](const MTPUpdates &result) {
+		api->applyUpdates(result);
+		if (done) done();
+	}).fail([=] {
+		if (done) done();
+	}).send();
+}
+
+void Stories::sendReaction(FullStoryId id, Data::ReactionId reaction) {
+	if (const auto maybeStory = lookup(id)) {
+		const auto story = *maybeStory;
+		story->setReactionId(reaction);
+
+		const auto api = &session().api();
+		api->request(MTPstories_SendReaction(
+			MTP_flags(0),
+			story->peer()->asUser()->inputUser,
+			MTP_int(id.story),
+			ReactionToMTP(reaction)
+		)).send();
+	}
 }
 
 std::shared_ptr<HistoryItem> Stories::resolveItem(not_null<Story*> story) {
@@ -1189,11 +1251,11 @@ void Stories::sendIncrementViewsRequests() {
 
 void Stories::loadViewsSlice(
 		StoryId id,
-		std::optional<StoryView> offset,
-		Fn<void(std::vector<StoryView>)> done) {
+		QString offset,
+		Fn<void(StoryViews)> done) {
 	if (_viewsStoryId == id
 		&& _viewsOffset == offset
-		&& (offset || _viewsRequestId)) {
+		&& (!offset.isEmpty() || _viewsRequestId)) {
 		if (_viewsRequestId) {
 			_viewsDone = std::move(done);
 		}
@@ -1206,22 +1268,30 @@ void Stories::loadViewsSlice(
 	const auto api = &_owner->session().api();
 	const auto perPage = _viewsDone ? kViewsPerPage : kPollingViewsPerPage;
 	api->request(_viewsRequestId).cancel();
+	using Flag = MTPstories_GetStoryViewsList::Flag;
 	_viewsRequestId = api->request(MTPstories_GetStoryViewsList(
+		MTP_flags(Flag::f_reactions_first),
+		MTPstring(), // q
 		MTP_int(id),
-		MTP_int(offset ? offset->date : 0),
-		MTP_long(offset ? peerToUser(offset->peer->id).bare : 0),
+		MTP_string(offset),
 		MTP_int(perPage)
 	)).done([=](const MTPstories_StoryViewsList &result) {
 		_viewsRequestId = 0;
 
-		auto slice = std::vector<StoryView>();
-
 		const auto &data = result.data();
+		auto slice = StoryViews{
+			.nextOffset = data.vnext_offset().value_or_empty(),
+			.reactions = data.vreactions_count().v,
+			.total = data.vcount().v,
+		};
 		_owner->processUsers(data.vusers());
-		slice.reserve(data.vviews().v.size());
+		slice.list.reserve(data.vviews().v.size());
 		for (const auto &view : data.vviews().v) {
-			slice.push_back({
+			slice.list.push_back({
 				.peer = _owner->peer(peerFromUser(view.data().vuser_id())),
+				.reaction = (view.data().vreaction()
+					? ReactionFromMTP(*view.data().vreaction())
+					: Data::ReactionId()),
 				.date = view.data().vdate().v,
 			});
 		}
@@ -1230,7 +1300,7 @@ void Stories::loadViewsSlice(
 			.story = _viewsStoryId,
 		};
 		if (const auto story = lookup(fullId)) {
-			(*story)->applyViewsSlice(_viewsOffset, slice, data.vcount().v);
+			(*story)->applyViewsSlice(_viewsOffset, slice);
 		}
 		if (const auto done = base::take(_viewsDone)) {
 			done(std::move(slice));
@@ -1618,9 +1688,14 @@ bool Stories::registerPolling(FullStoryId id, Polling polling) {
 }
 
 void Stories::unregisterPolling(FullStoryId id, Polling polling) {
-	const auto maybeStory = lookup(id);
-	Assert(maybeStory.has_value());
-	unregisterPolling(*maybeStory, polling);
+	if (const auto maybeStory = lookup(id)) {
+		unregisterPolling(*maybeStory, polling);
+	} else if (const auto i = _deletingStories.find(id)
+		; i != end(_deletingStories)) {
+		unregisterPolling(i->second.get(), polling);
+	} else {
+		Unexpected("Couldn't find story for unregistering polling.");
+	}
 }
 
 int Stories::pollingInterval(const PollingSettings &settings) const {
@@ -1664,7 +1739,7 @@ void Stories::sendPollingViewsRequests() {
 		return;
 	} else if (!_viewsRequestId) {
 		Assert(_viewsDone == nullptr);
-		loadViewsSlice(_pollingViews.front()->id(), std::nullopt, nullptr);
+		loadViewsSlice(_pollingViews.front()->id(), QString(), nullptr);
 	}
 	_pollingViewsTimer.callOnce(kPollViewsInterval);
 }

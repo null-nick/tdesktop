@@ -7,19 +7,17 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "media/stories/media_stories_controller.h"
 
-#include "base/timer.h"
 #include "base/power_save_blocker.h"
 #include "base/qt_signal_producer.h"
 #include "base/unixtime.h"
 #include "boxes/peers/prepare_short_info_box.h"
 #include "chat_helpers/compose/compose_show.h"
 #include "core/application.h"
+#include "core/core_settings.h"
 #include "core/update_checker.h"
-#include "data/stickers/data_custom_emoji.h"
 #include "data/data_changes.h"
 #include "data/data_document.h"
 #include "data/data_file_origin.h"
-#include "data/data_message_reactions.h"
 #include "data/data_session.h"
 #include "data/data_stories.h"
 #include "data/data_user.h"
@@ -35,26 +33,20 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "media/stories/media_stories_recent_views.h"
 #include "media/stories/media_stories_reply.h"
 #include "media/stories/media_stories_share.h"
+#include "media/stories/media_stories_stealth.h"
 #include "media/stories/media_stories_view.h"
 #include "media/audio/media_audio.h"
 #include "ui/boxes/confirm_box.h"
 #include "ui/boxes/report_box.h"
-#include "ui/effects/emoji_fly_animation.h"
-#include "ui/effects/message_sending_animation_common.h"
-#include "ui/effects/reaction_fly_animation.h"
-#include "ui/layers/box_content.h"
 #include "ui/text/text_utilities.h"
 #include "ui/toast/toast.h"
 #include "ui/widgets/buttons.h"
 #include "ui/widgets/labels.h"
 #include "ui/round_rect.h"
-#include "ui/rp_widget.h"
 #include "window/window_controller.h"
 #include "window/window_session_controller.h"
-#include "styles/style_chat.h"
-#include "styles/style_chat_helpers.h"
+#include "styles/style_chat_helpers.h" // defaultReportBox
 #include "styles/style_media_view.h"
-#include "styles/style_widgets.h"
 #include "styles/style_boxes.h" // UserpicButton
 
 #include <QtGui/QWindow>
@@ -64,7 +56,7 @@ namespace {
 
 constexpr auto kPhotoProgressInterval = crl::time(100);
 constexpr auto kPhotoDuration = 5 * crl::time(1000);
-constexpr auto kFullContentFade = 0.35;
+constexpr auto kFullContentFade = 0.6;
 constexpr auto kSiblingMultiplierDefault = 0.448;
 constexpr auto kSiblingMultiplierMax = 0.72;
 constexpr auto kSiblingOutsidePart = 0.24;
@@ -111,6 +103,19 @@ struct SameDayRange {
 		++result.till;
 	}
 	return result;
+}
+
+[[nodiscard]] QPoint Rotated(QPoint point, QPoint origin, float64 angle) {
+	if (std::abs(angle) < 1.) {
+		return point;
+	}
+	const auto alpha = angle / 180. * M_PI;
+	const auto acos = cos(alpha);
+	const auto asin = sin(alpha);
+	point -= origin;
+	return origin + QPoint(
+		int(base::SafeRound(acos * point.x() - asin * point.y())),
+		int(base::SafeRound(asin * point.x() + acos * point.y())));
 }
 
 } // namespace
@@ -276,54 +281,40 @@ Controller::Controller(not_null<Delegate*> delegate)
 
 	rpl::combine(
 		_replyArea->activeValue(),
-		_reactions->expandedValue(),
+		_reactions->activeValue(),
 		_1 || _2
 	) | rpl::distinct_until_changed(
 	) | rpl::start_with_next([=](bool active) {
-		if (active) {
-			_captionFullView = nullptr;
-		}
 		_replyActive = active;
 		updateContentFaded();
 	}, _lifetime);
 
-	_replyArea->focusedValue(
-	) | rpl::start_with_next([=](bool focused) {
-		_replyFocused = focused;
-		if (!_replyFocused) {
-			_reactions->hideIfCollapsed();
-		} else if (!_hasSendText) {
-			_reactions->show();
-		}
-	}, _lifetime);
-
-	_replyArea->hasSendTextValue(
-	) | rpl::start_with_next([=](bool has) {
-		_hasSendText = has;
-		if (_replyFocused) {
-			if (_hasSendText) {
-				_reactions->hide();
-			} else {
-				_reactions->show();
-			}
-		}
-	}, _lifetime);
+	_reactions->setReplyFieldState(
+		_replyArea->focusedValue(),
+		_replyArea->hasSendTextValue());
+	if (const auto like = _replyArea->likeAnimationTarget()) {
+		_reactions->attachToReactionButton(like);
+	}
 
 	_reactions->chosen(
-	) | rpl::start_with_next([=](HistoryView::Reactions::ChosenReaction id) {
-		startReactionAnimation(id.id, {
-			.type = Ui::MessageSendingAnimationFrom::Type::Emoji,
-			.globalStartGeometry = id.globalGeometry,
-			.frame = id.icon,
-		});
-		_replyArea->sendReaction(id.id);
-		unfocusReply();
+	) | rpl::start_with_next([=](Reactions::Chosen chosen) {
+		reactionChosen(chosen.mode, chosen.reaction);
 	}, _lifetime);
 
 	_delegate->storiesLayerShown(
 	) | rpl::start_with_next([=](bool shown) {
-		_layerShown = shown;
-		updatePlayingAllowed();
+		if (_layerShown != shown) {
+			_layerShown = shown;
+			updatePlayingAllowed();
+		}
+	}, _lifetime);
+
+	_header->tooltipShownValue(
+	) | rpl::start_with_next([=](bool shown) {
+		if (_tooltipShown != shown) {
+			_tooltipShown = shown;
+			updatePlayingAllowed();
+		}
 	}, _lifetime);
 
 	const auto window = _wrap->window()->windowHandle();
@@ -345,10 +336,12 @@ Controller::~Controller() {
 }
 
 void Controller::updateContentFaded() {
-	if (_contentFaded == _replyActive) {
+	const auto faded = _replyActive
+		|| (_captionFullView && !_captionFullView->closing());
+	if (_contentFaded == faded) {
 		return;
 	}
-	_contentFaded = _replyActive;
+	_contentFaded = faded;
 	_contentFadeAnimation.start(
 		[=] { _delegate->storiesRepaint(); },
 		_contentFaded ? 0. : 1.,
@@ -377,6 +370,8 @@ void Controller::initLayout() {
 
 	_layout = _wrap->sizeValue(
 	) | rpl::map([=](QSize size) {
+		const auto topNotchSkip = _delegate->storiesTopNotchSkip();
+
 		size = QSize(
 			std::max(size.width(), st::mediaviewMinWidth),
 			std::max(size.height(), st::mediaviewMinHeight));
@@ -386,7 +381,8 @@ void Controller::initLayout() {
 			? HeaderLayout::Outside
 			: HeaderLayout::Normal;
 
-		const auto topSkip = st::storiesFieldMargin.bottom()
+		const auto topSkip = topNotchSkip
+			+ st::storiesFieldMargin.bottom()
 			+ (layout.headerLayout == HeaderLayout::Outside
 				? outsideHeaderHeight
 				: 0);
@@ -513,9 +509,28 @@ void Controller::initLayout() {
 			.nameBoundingRect = nameBoundingRect(right, false),
 			.nameFontSize = nameFontSize,
 		};
-
+		if (!_locationAreas.empty()) {
+			rebuildLocationAreas(layout);
+		}
 		return layout;
 	});
+}
+
+void Controller::rebuildLocationAreas(const Layout &layout) const {
+	Expects(_locations.size() == _locationAreas.size());
+
+	const auto origin = layout.content.topLeft();
+	const auto scale = layout.content.size();
+	for (auto i = 0, count = int(_locations.size()); i != count; ++i) {
+		auto &area = _locationAreas[i];
+		const auto &general = _locations[i].area.geometry;
+		area.geometry = QRect(
+			int(base::SafeRound(general.x() * scale.width())),
+			int(base::SafeRound(general.y() * scale.height())),
+			int(base::SafeRound(general.width() * scale.width())),
+			int(base::SafeRound(general.height() * scale.height()))
+		).translated(origin);
+	}
 }
 
 Data::Story *Controller::story() const {
@@ -570,16 +585,42 @@ TextWithEntities Controller::captionText() const {
 	return _captionText;
 }
 
+bool Controller::skipCaption() const {
+	return _captionFullView != nullptr;
+}
+
+void Controller::toggleLiked() {
+	_reactions->toggleLiked();
+}
+
+void Controller::reactionChosen(ReactionsMode mode, ChosenReaction chosen) {
+	if (mode == ReactionsMode::Message) {
+		_replyArea->sendReaction(chosen.id);
+	} else if (const auto user = shownUser()) {
+		user->owner().stories().sendReaction(_shown, chosen.id);
+	}
+	unfocusReply();
+}
+
 void Controller::showFullCaption() {
 	if (_captionText.empty()) {
 		return;
 	}
-	togglePaused(true);
-	_captionFullView = std::make_unique<CaptionFullView>(
-		wrap(),
-		&_delegate->storiesShow()->session(),
-		_captionText,
-		[=] { togglePaused(false); });
+	_captionFullView = std::make_unique<CaptionFullView>(this);
+	updateContentFaded();
+}
+
+void Controller::captionClosing() {
+	updateContentFaded();
+}
+
+void Controller::captionClosed() {
+	if (!_captionFullView) {
+		return;
+	} else if (_captionFullView->focused()) {
+		_wrap->setFocus();
+	}
+	_captionFullView = nullptr;
 }
 
 std::shared_ptr<ChatHelpers::Show> Controller::uiShow() const {
@@ -660,7 +701,11 @@ void Controller::rebuildFromContext(
 			storyId.peer,
 			&StoriesSourceInfo::id);
 		if (i != end(sources)) {
+			if (_cachedSourcesList.empty()) {
+				_showingUnreadSources = source && (source->readTill < id);
+			}
 			rebuildCachedSourcesList(sources, (i - begin(sources)));
+			_cachedSourcesList[_cachedSourceIndex].shownId = storyId.story;
 			showSiblings(&user->session());
 			if (int(sources.end() - i) < kPreloadUsersCount) {
 				stories.loadMore(list);
@@ -794,8 +839,10 @@ void Controller::show(
 		_slider->raise();
 	}
 
+	captionClosed();
 	_captionText = story->caption();
-	_captionFullView = nullptr;
+	_contentFaded = false;
+	_contentFadeAnimation.stop();
 	const auto document = story->document();
 	_header->show({
 		.user = user,
@@ -807,22 +854,25 @@ void Controller::show(
 		.video = (document != nullptr),
 		.silent = (document && document->isSilentVideo()),
 	});
+	uiShow()->hideLayer(anim::type::instant);
 	if (!changeShown(story)) {
 		return;
 	}
 	_viewed = false;
 	invalidate_weak_ptrs(&_viewsLoadGuard);
 	_reactions->hide();
-	if (_replyFocused) {
+	if (_replyArea->focused()) {
 		unfocusReply();
 	}
 
 	_replyArea->show({
 		.user = unsupported ? nullptr : user,
 		.id = story->id(),
-	});
+	}, _reactions->likedValue());
+
 	_recentViews->show({
 		.list = story->recentViewers(),
+		.reactions = story->reactions(),
 		.total = story->views(),
 		.valid = user->isSelf(),
 	});
@@ -840,9 +890,10 @@ bool Controller::changeShown(Data::Story *story) {
 	if (_shown == id && !sessionChanged) {
 		return false;
 	}
-	if (const auto now = this->story()) {
-		now->owner().stories().unregisterPolling(
-			now,
+	if (_shown) {
+		Assert(_session != nullptr);
+		_session->data().stories().unregisterPolling(
+			_shown,
 			Data::Stories::Polling::Viewer);
 	}
 	if (sessionChanged) {
@@ -858,6 +909,16 @@ bool Controller::changeShown(Data::Story *story) {
 			story,
 			Data::Stories::Polling::Viewer);
 	}
+	_reactions->showLikeFrom(story);
+
+	const auto &locations = story
+		? story->locations()
+		: std::vector<Data::StoryLocation>();
+	if (_locations != locations) {
+		_locations = locations;
+		_locationAreas.clear();
+	}
+
 	return true;
 }
 
@@ -892,6 +953,7 @@ void Controller::subscribeToSession() {
 		} else {
 			_recentViews->show({
 				.list = update.story->recentViewers(),
+				.reactions = update.story->reactions(),
 				.total = update.story->views(),
 				.valid = update.story->peer()->isSelf(),
 			});
@@ -910,9 +972,11 @@ PauseState Controller::pauseState() const {
 	const auto playing = !inactive && !_paused;
 	return playing
 		? PauseState::Playing
-		: inactive
-		? PauseState::Inactive
-		: PauseState::Paused;
+		: !inactive
+		? PauseState::Paused
+		: _paused
+		? PauseState::InactivePaused
+		: PauseState::Inactive;
 }
 
 float64 Controller::currentVolume() const {
@@ -940,14 +1004,13 @@ void Controller::updatePlayingAllowed() {
 		&& _windowActive
 		&& !_paused
 		&& !_replyActive
+		&& (!_captionFullView || _captionFullView->closing())
 		&& !_layerShown
-		&& !_menuShown);
+		&& !_menuShown
+		&& !_tooltipShown);
 }
 
 void Controller::setPlayingAllowed(bool allowed) {
-	if (allowed) {
-		_captionFullView = nullptr;
-	}
 	if (_photoPlayback) {
 		_photoPlayback->togglePaused(!allowed);
 	} else {
@@ -961,13 +1024,13 @@ void Controller::showSiblings(not_null<Main::Session*> session) {
 		session,
 		(_cachedSourceIndex > 0
 			? _cachedSourcesList[_cachedSourceIndex - 1]
-			: PeerId()));
+			: CachedSource()));
 	showSibling(
 		_siblingRight,
 		session,
 		(_cachedSourceIndex + 1 < _cachedSourcesList.size()
 			? _cachedSourcesList[_cachedSourceIndex + 1]
-			: PeerId()));
+			: CachedSource()));
 }
 
 void Controller::hideSiblings() {
@@ -978,16 +1041,16 @@ void Controller::hideSiblings() {
 void Controller::showSibling(
 		std::unique_ptr<Sibling> &sibling,
 		not_null<Main::Session*> session,
-		PeerId peerId) {
-	if (!peerId) {
+		CachedSource cached) {
+	if (!cached) {
 		sibling = nullptr;
 		return;
 	}
-	const auto source = session->data().stories().source(peerId);
+	const auto source = session->data().stories().source(cached.peerId);
 	if (!source) {
 		sibling = nullptr;
-	} else if (!sibling || !sibling->shows(*source)) {
-		sibling = std::make_unique<Sibling>(this, *source);
+	} else if (!sibling || !sibling->shows(*source, cached.shownId)) {
+		sibling = std::make_unique<Sibling>(this, *source, cached.shownId);
 	}
 }
 
@@ -997,6 +1060,7 @@ void Controller::ready() {
 	}
 	_started = true;
 	updatePlayingAllowed();
+	_reactions->ready();
 }
 
 void Controller::updateVideoPlayback(const Player::TrackState &state) {
@@ -1016,6 +1080,32 @@ void Controller::updatePlayback(const Player::TrackState &state) {
 			_delegate->storiesClose();
 		}
 	}
+}
+
+ClickHandlerPtr Controller::lookupLocationHandler(QPoint point) const {
+	const auto &layout = _layout.current();
+	if (_locations.empty() || !layout) {
+		return nullptr;
+	} else if (_locationAreas.empty()) {
+		_locationAreas = _locations | ranges::views::transform([](
+				const Data::StoryLocation &location) {
+			return LocationArea{
+				.rotation = location.area.rotation,
+				.handler = std::make_shared<LocationClickHandler>(
+					location.point),
+			};
+		}) | ranges::to_vector;
+		rebuildLocationAreas(*layout);
+	}
+
+	for (const auto &area : _locationAreas) {
+		const auto center = area.geometry.center();
+		const auto angle = -area.rotation;
+		if (area.geometry.contains(Rotated(point, center, angle))) {
+			return area.handler;
+		}
+	}
+	return nullptr;
 }
 
 void Controller::maybeMarkAsRead(const Player::TrackState &state) {
@@ -1157,8 +1247,11 @@ void Controller::togglePaused(bool paused) {
 
 void Controller::contentPressed(bool pressed) {
 	togglePaused(pressed);
+	if (_captionFullView) {
+		_captionFullView->close();
+	}
 	if (pressed) {
-		_reactions->collapse();
+		_reactions->outsidePressed();
 	}
 }
 
@@ -1189,12 +1282,17 @@ SiblingView Controller::sibling(SiblingType type) const {
 	return {};
 }
 
-ViewsSlice Controller::views(PeerId offset) {
+const Data::StoryViews &Controller::views(int limit, bool initial) {
 	invalidate_weak_ptrs(&_viewsLoadGuard);
-	if (!offset) {
+	if (initial) {
 		refreshViewsFromData();
-	} else if (!sliceViewsTo(offset)) {
-		return { .left = _viewsSlice.left };
+	}
+	if (_viewsSlice.total > _viewsSlice.list.size()
+		&& _viewsSlice.list.size() < limit) {
+		const auto done = viewsGotMoreCallback();
+		const auto user = shownUser();
+		auto &stories = user->owner().stories();
+		stories.loadViewsSlice(_shown.story, _viewsSlice.nextOffset, done);
 	}
 	return _viewsSlice;
 }
@@ -1203,27 +1301,25 @@ rpl::producer<> Controller::moreViewsLoaded() const {
 	return _moreViewsLoaded.events();
 }
 
-Fn<void(std::vector<Data::StoryView>)> Controller::viewsGotMoreCallback() {
-	return crl::guard(&_viewsLoadGuard, [=](
-			const std::vector<Data::StoryView> &result) {
+Fn<void(Data::StoryViews)> Controller::viewsGotMoreCallback() {
+	return crl::guard(&_viewsLoadGuard, [=](Data::StoryViews result) {
 		if (_viewsSlice.list.empty()) {
 			const auto user = shownUser();
 			auto &stories = user->owner().stories();
 			if (const auto maybeStory = stories.lookup(_shown)) {
-				_viewsSlice = {
-					.list = result,
-					.left = (*maybeStory)->views() - int(result.size()),
-				};
+				_viewsSlice = (*maybeStory)->viewsList();
 			} else {
 				_viewsSlice = {};
 			}
 		} else {
 			_viewsSlice.list.insert(
 				end(_viewsSlice.list),
-				begin(result),
-				end(result));
-			_viewsSlice.left
-				= std::max(_viewsSlice.left - int(result.size()), 0);
+				begin(result.list),
+				end(result.list));
+			_viewsSlice.total = result.nextOffset.isEmpty()
+				? int(_viewsSlice.list.size())
+				: std::max(result.total, int(_viewsSlice.list.size()));
+			_viewsSlice.nextOffset = result.nextOffset;
 		}
 		_moreViewsLoaded.fire({});
 	});
@@ -1278,14 +1374,22 @@ void Controller::rebuildCachedSourcesList(
 		int index) {
 	Expects(index >= 0 && index < lists.size());
 
+	const auto currentPeerId = lists[index].id;
+
 	// Remove removed.
 	_cachedSourcesList.erase(ranges::remove_if(_cachedSourcesList, [&](
-			PeerId id) {
-		return !ranges::contains(lists, id, &Data::StoriesSourceInfo::id);
+			CachedSource source) {
+		return !ranges::contains(
+			lists,
+			source.peerId,
+			&Data::StoriesSourceInfo::id);
 	}), end(_cachedSourcesList));
 
 	// Find current, full rebuild if can't find.
-	const auto i = ranges::find(_cachedSourcesList, lists[index].id);
+	const auto i = ranges::find(
+		_cachedSourcesList,
+		currentPeerId,
+		&CachedSource::peerId);
 	if (i == end(_cachedSourcesList)) {
 		_cachedSourcesList.clear();
 	} else {
@@ -1294,38 +1398,63 @@ void Controller::rebuildCachedSourcesList(
 
 	if (_cachedSourcesList.empty()) {
 		// Full rebuild.
+		const auto predicate = [&](const Data::StoriesSourceInfo &info) {
+			return !_showingUnreadSources
+				|| (info.unreadCount > 0)
+				|| (info.id == currentPeerId);
+		};
+		const auto mapper = [](const Data::StoriesSourceInfo &info) {
+			return CachedSource{ info.id };
+		};
 		_cachedSourcesList = lists
-			| ranges::views::transform(&Data::StoriesSourceInfo::id)
+			| ranges::views::filter(predicate)
+			| ranges::views::transform(mapper)
 			| ranges::to_vector;
-		_cachedSourceIndex = index;
+		_cachedSourceIndex = ranges::find(
+			_cachedSourcesList,
+			currentPeerId,
+			&CachedSource::peerId
+		) - begin(_cachedSourcesList);
 	} else if (ranges::equal(
 			lists,
 			_cachedSourcesList,
 			ranges::equal_to(),
-			&Data::StoriesSourceInfo::id)) {
+			&Data::StoriesSourceInfo::id,
+			&CachedSource::peerId)) {
 		// No rebuild needed.
-		_cachedSourceIndex = index;
 	} else {
 		// All that go before the current push to front.
 		for (auto before = index; before > 0;) {
-			const auto peerId = lists[--before].id;
-			if (!ranges::contains(_cachedSourcesList, peerId)) {
+			const auto &info = lists[--before];
+			if (_showingUnreadSources && !info.unreadCount) {
+				continue;
+			} else if (!ranges::contains(
+					_cachedSourcesList,
+					info.id,
+					&CachedSource::peerId)) {
 				_cachedSourcesList.insert(
 					begin(_cachedSourcesList),
-					peerId);
+					{ info.id });
 				++_cachedSourceIndex;
 			}
 		}
 		// All that go after the current push to back.
-		for (auto after = index + 1, count = int(lists.size()); after != count; ++after) {
-			const auto peerId = lists[after].id;
-			if (!ranges::contains(_cachedSourcesList, peerId)) {
-				_cachedSourcesList.push_back(peerId);
+		for (auto after = index + 1, count = int(lists.size())
+			; after != count
+			; ++after) {
+			const auto &info = lists[after];
+			if (_showingUnreadSources && !info.unreadCount) {
+				continue;
+			} else if (!ranges::contains(
+					_cachedSourcesList,
+					info.id,
+					&CachedSource::peerId)) {
+				_cachedSourcesList.push_back({ info.id });
 			}
 		}
 	}
 
-	Ensures(_cachedSourcesList.size() == lists.size());
+	Ensures(_cachedSourcesList.size() <= lists.size());
 	Ensures(_cachedSourceIndex >= 0
 		&& _cachedSourceIndex < _cachedSourcesList.size());
 }
@@ -1338,49 +1467,9 @@ void Controller::refreshViewsFromData() {
 	const auto maybeStory = stories.lookup(_shown);
 	if (!maybeStory || !user->isSelf()) {
 		_viewsSlice = {};
-		return;
+	} else {
+		_viewsSlice = (*maybeStory)->viewsList();
 	}
-	const auto story = *maybeStory;
-	const auto &list = story->viewsList();
-	const auto total = story->views();
-	_viewsSlice.list = list
-		| ranges::views::take(Data::Stories::kViewsPerPage)
-		| ranges::to_vector;
-	_viewsSlice.left = total - int(_viewsSlice.list.size());
-	if (_viewsSlice.list.empty() && _viewsSlice.left > 0) {
-		const auto done = viewsGotMoreCallback();
-		stories.loadViewsSlice(_shown.story, std::nullopt, done);
-	}
-}
-
-bool Controller::sliceViewsTo(PeerId offset) {
-	Expects(shown());
-
-	const auto user = shownUser();
-	auto &stories = user->owner().stories();
-	const auto maybeStory = stories.lookup(_shown);
-	if (!maybeStory || !user->isSelf()) {
-		_viewsSlice = {};
-		return true;
-	}
-	const auto story = *maybeStory;
-	const auto &list = story->viewsList();
-	const auto proj = [&](const Data::StoryView &single) {
-		return single.peer->id;
-	};
-	const auto i = ranges::find(list, _viewsSlice.list.back());
-	const auto add = (i != end(list)) ? int(end(list) - i - 1) : 0;
-	const auto j = ranges::find(_viewsSlice.list, offset, proj);
-	Assert(j != end(_viewsSlice.list));
-	if (!add && (j + 1) == end(_viewsSlice.list)) {
-		const auto done = viewsGotMoreCallback();
-		stories.loadViewsSlice(_shown.story, _viewsSlice.list.back(), done);
-		return false;
-	}
-	_viewsSlice.list.erase(begin(_viewsSlice.list), j + 1);
-	_viewsSlice.list.insert(end(_viewsSlice.list), i + 1, end(list));
-	_viewsSlice.left -= add;
-	return true;
 }
 
 void Controller::unfocusReply() {
@@ -1452,6 +1541,24 @@ void Controller::tryProcessKeyInput(not_null<QKeyEvent*> e) {
 	_replyArea->tryProcessKeyInput(e);
 }
 
+bool Controller::allowStealthMode() const {
+	const auto story = this->story();
+	return story
+		&& !story->peer()->isSelf()
+		&& story->peer()->session().premiumPossible();
+}
+
+void Controller::setupStealthMode() {
+	SetupStealthMode(uiShow());
+}
+
+auto Controller::attachReactionsToMenu(
+	not_null<Ui::PopupMenu*> menu,
+	QPoint desiredPosition)
+-> AttachStripResult {
+	return _reactions->attachToMenu(menu, desiredPosition);
+}
+
 rpl::lifetime &Controller::lifetime() {
 	return _lifetime;
 }
@@ -1465,34 +1572,6 @@ void Controller::updatePowerSaveBlocker(const Player::TrackState &state) {
 		base::PowerSaveBlockType::PreventDisplaySleep,
 		[] { return u"Stories playback is active"_q; },
 		[=] { return _wrap->window()->windowHandle(); });
-}
-
-void Controller::startReactionAnimation(
-		Data::ReactionId id,
-		Ui::MessageSendingAnimationFrom from) {
-	Expects(shown());
-
-	auto args = Ui::ReactionFlyAnimationArgs{
-		.id = id,
-		.flyIcon = from.frame,
-		.flyFrom = _wrap->mapFromGlobal(from.globalStartGeometry),
-		.scaleOutDuration = st::fadeWrapDuration * 2,
-	};
-	_reactionAnimation = std::make_unique<Ui::EmojiFlyAnimation>(
-		_wrap,
-		&shownUser()->owner().reactions(),
-		std::move(args),
-		[=] { _reactionAnimation->repaint(); },
-		Data::CustomEmojiSizeTag::Isolated);
-	const auto layer = _reactionAnimation->layer();
-	_wrap->paintRequest() | rpl::start_with_next([=] {
-		if (!_reactionAnimation->paintBadgeFrame(_wrap.get())) {
-			InvokeQueued(layer, [=] {
-				_reactionAnimation = nullptr;
-				_wrap->update();
-			});
-		}
-	}, layer->lifetime());
 }
 
 Ui::Toast::Config PrepareTogglePinnedToast(int count, bool pinned) {

@@ -26,18 +26,19 @@ struct FileChosen;
 
 namespace Data {
 struct FileOrigin;
-struct ReactionId;
+class DocumentMedia;
 } // namespace Data
 
 namespace HistoryView::Reactions {
 class CachedIconFactory;
+struct ChosenReaction;
+enum class AttachSelectorResult;
 } // namespace HistoryView::Reactions
 
 namespace Ui {
 class RpWidget;
-struct MessageSendingAnimationFrom;
-class EmojiFlyAnimation;
 class BoxContent;
+class PopupMenu;
 } // namespace Ui
 
 namespace Ui::Toast {
@@ -66,6 +67,7 @@ struct SiblingView;
 enum class SiblingType;
 struct ContentLayout;
 class CaptionFullView;
+enum class ReactionsMode;
 
 enum class HeaderLayout {
 	Normal,
@@ -76,6 +78,7 @@ enum class PauseState {
 	Playing,
 	Paused,
 	Inactive,
+	InactivePaused,
 };
 
 struct SiblingLayout {
@@ -103,11 +106,6 @@ struct Layout {
 	friend inline bool operator==(Layout, Layout) = default;
 };
 
-struct ViewsSlice {
-	std::vector<Data::StoryView> list;
-	int left = 0;
-};
-
 class Controller final : public base::has_weak_ptr {
 public:
 	explicit Controller(not_null<Delegate*> delegate);
@@ -121,7 +119,11 @@ public:
 	[[nodiscard]] bool closeByClickAt(QPoint position) const;
 	[[nodiscard]] Data::FileOrigin fileOrigin() const;
 	[[nodiscard]] TextWithEntities captionText() const;
+	[[nodiscard]] bool skipCaption() const;
+	void toggleLiked();
 	void showFullCaption();
+	void captionClosing();
+	void captionClosed();
 
 	[[nodiscard]] std::shared_ptr<ChatHelpers::Show> uiShow() const;
 	[[nodiscard]] auto stickerOrEmojiChosen() const
@@ -133,6 +135,7 @@ public:
 	void ready();
 
 	void updateVideoPlayback(const Player::TrackState &state);
+	[[nodiscard]] ClickHandlerPtr lookupLocationHandler(QPoint point) const;
 
 	[[nodiscard]] bool subjumpAvailable(int delta) const;
 	[[nodiscard]] bool subjumpFor(int delta);
@@ -151,7 +154,7 @@ public:
 	void repaintSibling(not_null<Sibling*> sibling);
 	[[nodiscard]] SiblingView sibling(SiblingType type) const;
 
-	[[nodiscard]] ViewsSlice views(PeerId offset);
+	[[nodiscard]] const Data::StoryViews &views(int limit, bool initial);
 	[[nodiscard]] rpl::producer<> moreViewsLoaded() const;
 
 	void unfocusReply();
@@ -163,9 +166,20 @@ public:
 	[[nodiscard]] bool ignoreWindowMove(QPoint position) const;
 	void tryProcessKeyInput(not_null<QKeyEvent*> e);
 
+	[[nodiscard]] bool allowStealthMode() const;
+	void setupStealthMode();
+
+	using AttachStripResult = HistoryView::Reactions::AttachSelectorResult;
+	[[nodiscard]] AttachStripResult attachReactionsToMenu(
+		not_null<Ui::PopupMenu*> menu,
+		QPoint desiredPosition);
+
 	[[nodiscard]] rpl::lifetime &lifetime();
 
 private:
+	class PhotoPlayback;
+	class Unsupported;
+	using ChosenReaction = HistoryView::Reactions::ChosenReaction;
 	struct StoriesList {
 		not_null<UserData*> user;
 		Data::StoriesIds ids;
@@ -175,8 +189,19 @@ private:
 			const StoriesList &,
 			const StoriesList &) = default;
 	};
-	class PhotoPlayback;
-	class Unsupported;
+	struct CachedSource {
+		PeerId peerId = 0;
+		StoryId shownId = 0;
+
+		explicit operator bool() const {
+			return peerId != 0;
+		}
+	};
+	struct LocationArea {
+		QRect geometry;
+		float64 rotation = 0.;
+		ClickHandlerPtr handler;
+	};
 
 	void initLayout();
 	bool changeShown(Data::Story *story);
@@ -190,22 +215,22 @@ private:
 	void updateContentFaded();
 	void updatePlayingAllowed();
 	void setPlayingAllowed(bool allowed);
+	void rebuildLocationAreas(const Layout &layout) const;
 
 	void hideSiblings();
 	void showSiblings(not_null<Main::Session*> session);
 	void showSibling(
 		std::unique_ptr<Sibling> &sibling,
 		not_null<Main::Session*> session,
-		PeerId peerId);
+		CachedSource cached);
 
 	void subjumpTo(int index);
 	void checkWaitingFor();
 	void moveFromShown();
 
 	void refreshViewsFromData();
-	bool sliceViewsTo(PeerId offset);
 	[[nodiscard]] auto viewsGotMoreCallback()
-		-> Fn<void(std::vector<Data::StoryView>)>;
+		-> Fn<void(Data::StoryViews)>;
 
 	[[nodiscard]] bool shown() const;
 	[[nodiscard]] UserData *shownUser() const;
@@ -219,9 +244,7 @@ private:
 		const std::vector<Data::StoriesSourceInfo> &lists,
 		int index);
 
-	void startReactionAnimation(
-		Data::ReactionId id,
-		Ui::MessageSendingAnimationFrom from);
+	void reactionChosen(ReactionsMode mode, ChosenReaction chosen);
 
 	const not_null<Delegate*> _delegate;
 
@@ -241,11 +264,10 @@ private:
 	bool _contentFaded = false;
 
 	bool _windowActive = false;
-	bool _replyFocused = false;
 	bool _replyActive = false;
-	bool _hasSendText = false;
 	bool _layerShown = false;
 	bool _menuShown = false;
+	bool _tooltipShown = false;
 	bool _paused = false;
 
 	FullStoryId _shown;
@@ -261,10 +283,14 @@ private:
 	bool _started = false;
 	bool _viewed = false;
 
-	std::vector<PeerId> _cachedSourcesList;
-	int _cachedSourceIndex = -1;
+	std::vector<Data::StoryLocation> _locations;
+	mutable std::vector<LocationArea> _locationAreas;
 
-	ViewsSlice _viewsSlice;
+	std::vector<CachedSource> _cachedSourcesList;
+	int _cachedSourceIndex = -1;
+	bool _showingUnreadSources = false;
+
+	Data::StoryViews _viewsSlice;
 	rpl::event_stream<> _moreViewsLoaded;
 	base::has_weak_ptr _viewsLoadGuard;
 
@@ -272,7 +298,6 @@ private:
 	std::unique_ptr<Sibling> _siblingRight;
 
 	std::unique_ptr<base::PowerSaveBlocker> _powerSaveBlocker;
-	std::unique_ptr<Ui::EmojiFlyAnimation> _reactionAnimation;
 
 	Main::Session *_session = nullptr;
 	rpl::lifetime _sessionLifetime;

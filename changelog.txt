@@ -1,3 +1,42 @@
+4.9 (14.08.23)
+
+- Gradual stories rollout.
+
+4.8.12 beta (11.08.23)
+
+- Fix crash by a full rebuild on macOS.
+
+4.8.11 beta (10.08.23)
+
+- Fix initial video playback speed.
+- Use native window resize on Windows 11.
+- Fix memory leak in Direct3D 11 media viewer on Windows.
+
+4.8.10 (28.07.23)
+
+- Send story sharing comments as separate messages.
+- Fix stories explanation tooltip ordering.
+
+4.8.9 (26.07.23)
+
+- Bug fixes and other minor improvements.
+
+4.8.8 (25.07.23)
+
+- Several crash fixes and story viewer improvements.
+
+4.8.7 (21.07.23)
+
+- Several crash fixes and small stories improvements.
+
+4.8.6 (21.07.23)
+
+- Fix langpack keys by a full rebuild on macOS.
+
+4.8.5 (20.07.23)
+
+- Bug fixes and other minor improvements. And stories preview.
+
 4.8.4 (13.06.23)
 
 - Fix opening links on Linux.

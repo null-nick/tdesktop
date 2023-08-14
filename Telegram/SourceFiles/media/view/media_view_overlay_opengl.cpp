@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "media/view/media_view_overlay_opengl.h"
 
+#include "data/data_peer_values.h" // AmPremiumValue.
 #include "ui/gl/gl_shader.h"
 #include "ui/painter.h"
 #include "media/stories/media_stories_view.h"
@@ -21,7 +22,8 @@ namespace {
 
 using namespace Ui::GL;
 
-constexpr auto kRadialLoadingOffset = 4;
+constexpr auto kNotchOffset = 4;
+constexpr auto kRadialLoadingOffset = kNotchOffset + 4;
 constexpr auto kThemePreviewOffset = kRadialLoadingOffset + 4;
 constexpr auto kDocumentBubbleOffset = kThemePreviewOffset + 4;
 constexpr auto kSaveMsgOffset = kDocumentBubbleOffset + 4;
@@ -121,7 +123,16 @@ OverlayWidget::RendererGL::RendererGL(not_null<OverlayWidget*> owner)
 	crl::on_main(this, [=] {
 		_owner->_storiesChanged.events(
 		) | rpl::start_with_next([=] {
-			invalidateControls();
+			if (_owner->_storiesSession) {
+				Data::AmPremiumValue(
+					_owner->_storiesSession
+				) | rpl::start_with_next([=] {
+					invalidateControls();
+				}, _storiesLifetime);
+			} else {
+				_storiesLifetime.destroy();
+				invalidateControls();
+			}
 		}, _lifetime);
 	});
 }
@@ -129,7 +140,7 @@ OverlayWidget::RendererGL::RendererGL(not_null<OverlayWidget*> owner)
 void OverlayWidget::RendererGL::init(
 		not_null<QOpenGLWidget*> widget,
 		QOpenGLFunctions &f) {
-	constexpr auto kQuads = 8;
+	constexpr auto kQuads = 9;
 	constexpr auto kQuadVertices = kQuads * 4;
 	constexpr auto kQuadValues = kQuadVertices * 4;
 	constexpr auto kControlsValues = kControlsCount * kControlValues;
@@ -291,6 +302,28 @@ bool OverlayWidget::RendererGL::handleHideWorkaround(QOpenGLFunctions &f) {
 
 void OverlayWidget::RendererGL::paintBackground() {
 	_contentBuffer->bind();
+	if (const auto notch = _owner->topNotchSkip()) {
+		const auto top = transformRect(QRect(0, 0, _owner->width(), notch));
+        const GLfloat coords[] = {
+			top.left(), top.top(),
+			top.right(), top.top(),
+			top.right(), top.bottom(),
+			top.left(), top.bottom(),
+		};
+		const auto offset = kNotchOffset;
+		_contentBuffer->write(
+			offset * 4 * sizeof(GLfloat),
+			coords,
+			sizeof(coords));
+
+		_fillProgram->bind();
+		_fillProgram->setUniformValue("viewport", _uniformViewport);
+		FillRectangle(
+			*_f,
+			&*_fillProgram,
+			offset,
+			QColor(0, 0, 0));
+	}
 }
 
 void OverlayWidget::RendererGL::paintTransformedVideoFrame(
@@ -465,7 +498,9 @@ void OverlayWidget::RendererGL::paintTransformedContent(
 		not_null<QOpenGLShaderProgram*> program,
 		ContentGeometry geometry,
 		bool fillTransparentBackground) {
-	const auto rect = transformRect(geometry.rect);
+	const auto rect = scaleRect(
+		transformRect(geometry.rect),
+		geometry.scale);
 	const auto centerx = rect.x() + rect.width() / 2;
 	const auto centery = rect.y() + rect.height() / 2;
 	const auto rsin = float(std::sin(geometry.rotation * M_PI / 180.));
@@ -623,8 +658,7 @@ void OverlayWidget::RendererGL::paintControl(
 		QRect inner,
 		float64 innerOpacity,
 		const style::icon &icon) {
-	const auto stories = (_owner->_stories != nullptr);
-	const auto meta = ControlMeta(control, stories);
+	const auto meta = controlMeta(control);
 	Assert(meta.icon == &icon);
 
 	const auto overAlpha = overOpacity * kOverBackgroundOpacity;
@@ -682,18 +716,25 @@ void OverlayWidget::RendererGL::paintControl(
 	FillTexturedRectangle(*_f, &*_controlsProgram, fgOffset);
 }
 
-auto OverlayWidget::RendererGL::ControlMeta(Over control, bool stories)
--> Control {
+auto OverlayWidget::RendererGL::controlMeta(Over control) const -> Control {
+	const auto stories = [&] {
+		return (_owner->_stories != nullptr);
+	};
 	switch (control) {
 	case Over::Left: return {
 		0,
-		stories ? &st::storiesLeft : &st::mediaviewLeft
+		stories() ? &st::storiesLeft : &st::mediaviewLeft
 	};
 	case Over::Right: return {
 		1,
-		stories ? &st::storiesRight : &st::mediaviewRight
+		stories() ? &st::storiesRight : &st::mediaviewRight
 	};
-	case Over::Save: return { 2, &st::mediaviewSave };
+	case Over::Save: return {
+		2,
+		(_owner->saveControlLocked()
+			? &st::mediaviewSaveLocked
+			: &st::mediaviewSave)
+	};
 	case Over::Share: return { 3, &st::mediaviewShare };
 	case Over::Rotate: return { 4, &st::mediaviewRotate };
 	case Over::More: return { 5, &st::mediaviewMore };
@@ -705,14 +746,13 @@ void OverlayWidget::RendererGL::validateControls() {
 	if (!_controlsImage.image().isNull()) {
 		return;
 	}
-	const auto stories = (_owner->_stories != nullptr);
 	const auto metas = {
-		ControlMeta(Over::Left, stories),
-		ControlMeta(Over::Right, stories),
-		ControlMeta(Over::Save, stories),
-		ControlMeta(Over::Share, stories),
-		ControlMeta(Over::Rotate, stories),
-		ControlMeta(Over::More, stories),
+		controlMeta(Over::Left),
+		controlMeta(Over::Right),
+		controlMeta(Over::Save),
+		controlMeta(Over::Share),
+		controlMeta(Over::Rotate),
+		controlMeta(Over::More),
 	};
 	auto maxWidth = 0;
 	auto fullHeight = 0;
@@ -896,6 +936,10 @@ void OverlayWidget::RendererGL::paintStoriesSiblingPart(
 		float64 opacity) {
 	Expects(index >= 0 && index < kStoriesSiblingPartsCount);
 
+	if (image.isNull() || rect.isEmpty()) {
+		return;
+	}
+
 	_f->glActiveTexture(GL_TEXTURE0);
 
 	auto &part = _storiesSiblingParts[index];
@@ -1037,6 +1081,19 @@ Rect OverlayWidget::RendererGL::transformRect(const QRectF &raster) const {
 
 Rect OverlayWidget::RendererGL::transformRect(const QRect &raster) const {
 	return TransformRect(Rect(raster), _viewport, _factor);
+}
+
+Rect OverlayWidget::RendererGL::scaleRect(
+		const Rect &unscaled,
+		float64 scale) const {
+	const auto added = scale - 1.;
+	const auto addw = unscaled.width() * added;
+	const auto addh = unscaled.height() * added;
+	return Rect(
+		unscaled.x() - addw / 2,
+		unscaled.y() - addh / 2,
+		unscaled.width() + addw,
+		unscaled.height() + addh);
 }
 
 } // namespace Media::View

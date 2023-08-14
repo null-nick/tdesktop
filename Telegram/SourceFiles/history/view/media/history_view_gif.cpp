@@ -88,14 +88,13 @@ Gif::Gif(
 	bool spoiler)
 : File(parent, realParent)
 , _data(document)
-, _caption(st::minPhotoSize - st::msgPadding.left() - st::msgPadding.right())
+, _storyId(realParent->media()
+	? realParent->media()->storyId()
+	: FullStoryId())
+, _caption(
+	st::minPhotoSize - st::msgPadding.left() - st::msgPadding.right())
 , _spoiler(spoiler ? std::make_unique<MediaSpoiler>() : nullptr)
 , _downloadSize(Ui::FormatSizeText(_data->size)) {
-	if (const auto media = realParent->media()) {
-		if (media->storyId()) {
-			_story = true;
-		}
-	}
 	setDocumentLinks(_data, realParent, [=] {
 		if (!_data->createMediaView()->canBePlayed(realParent)
 			|| !_data->isAnimation()
@@ -1065,8 +1064,18 @@ TextState Gif::textState(QPoint point, StateRequest request) const {
 			recth -= skip;
 		}
 		if (reply) {
-			if (QRect(rectx, recty, rectw, recth).contains(point)) {
+			const auto replyRect = QRect(rectx, recty, rectw, recth);
+			if (replyRect.contains(point)) {
 				result.link = reply->replyToLink();
+				reply->ripple.lastPoint = point - replyRect.topLeft();
+				if (!reply->ripple.animation) {
+					reply->ripple.animation = std::make_unique<Ui::RippleAnimation>(
+						st::defaultRippleAnimation,
+						Ui::RippleAnimation::RoundRectMask(
+							replyRect.size(),
+							st::roundRadiusSmall),
+						[=] { item->history()->owner().requestItemRepaint(item); });
+				}
 				return result;
 			}
 		}
@@ -1438,15 +1447,14 @@ void Gif::dataMediaCreated() const {
 }
 
 void Gif::togglePollingStory(bool enabled) const {
-	if (!_story || _pollingStory == enabled) {
+	if (!_storyId || _pollingStory == enabled) {
 		return;
 	}
 	const auto polling = Data::Stories::Polling::Chat;
-	const auto media = _parent->data()->media();
-	const auto id = media ? media->storyId() : FullStoryId();
 	if (!enabled) {
-		_data->owner().stories().unregisterPolling(id, polling);
-	} else if (!_data->owner().stories().registerPolling(id, polling)) {
+		_data->owner().stories().unregisterPolling(_storyId, polling);
+	} else if (
+			!_data->owner().stories().registerPolling(_storyId, polling)) {
 		return;
 	}
 	_pollingStory = enabled;
@@ -1464,7 +1472,7 @@ void Gif::hideSpoilers() {
 }
 
 bool Gif::needsBubble() const {
-	if (_story) {
+	if (_storyId) {
 		return true;
 	} else if (_data->isVideoMessage()) {
 		return false;

@@ -23,6 +23,7 @@ struct DialogsStoriesList;
 namespace Ui {
 class PopupMenu;
 struct OutlineSegment;
+class ImportantTooltip;
 } // namespace Ui
 
 namespace Dialogs::Stories {
@@ -72,9 +73,16 @@ public:
 		QPoint positionSmall,
 		style::align alignSmall,
 		QRect geometryFull = QRect());
+	void setShowTooltip(
+		not_null<QWidget*> tooltipParent,
+		rpl::producer<bool> shown,
+		Fn<void()> hide);
+	void raiseTooltip();
+
 	struct CollapsedGeometry {
 		QRect geometry;
 		float64 expanded = 0.;
+		float64 singleWidth = 0.;
 	};
 	[[nodiscard]] CollapsedGeometry collapsedGeometryCurrent() const;
 	[[nodiscard]] rpl::producer<> collapsedGeometryChanged() const;
@@ -90,6 +98,9 @@ public:
 	[[nodiscard]] rpl::producer<bool> toggleExpandedRequests() const;
 	[[nodiscard]] rpl::producer<> entered() const;
 	[[nodiscard]] rpl::producer<> loadMoreRequests() const;
+
+	[[nodiscard]] auto verticalScrollEvents() const
+		-> rpl::producer<not_null<QWheelEvent*>>;
 
 private:
 	struct Layout;
@@ -123,6 +134,13 @@ private:
 	void mouseReleaseEvent(QMouseEvent *e) override;
 	void contextMenuEvent(QContextMenuEvent *e) override;
 
+	void paint(
+		QPainter &p,
+		const Layout &layout,
+		float64 photo,
+		float64 line,
+		bool layered);
+	void ensureLayer();
 	void validateThumbnail(not_null<Item*> item);
 	void validateName(not_null<Item*> item);
 	void updateScrollMax();
@@ -132,10 +150,15 @@ private:
 	void checkLoadMore();
 	void requestExpanded(bool expanded);
 
+	void updateTooltipGeometry();
+	[[nodiscard]] TextWithEntities computeTooltipText() const;
+	void toggleTooltip(bool fast);
+
 	bool checkForFullState();
 	void setState(State state);
 	void updateGeometry();
 	[[nodiscard]] QRect countSmallGeometry() const;
+	void updateExpanding();
 	void updateExpanding(int expandingHeight, int expandedHeight);
 	void validateSegments(
 		not_null<Item*> item,
@@ -156,6 +179,7 @@ private:
 	rpl::event_stream<> _loadMoreRequests;
 	rpl::event_stream<> _collapsedGeometryChanged;
 
+	QImage _layer;
 	QPoint _positionSmall;
 	style::align _alignSmall = {};
 	QRect _geometryFull;
@@ -169,6 +193,7 @@ private:
 	int _scrollLeft = 0;
 	int _scrollLeftMax = 0;
 	bool _dragging = false;
+	Qt::Orientation _scrollingLock = {};
 
 	Ui::Animations::Simple _expandedAnimation;
 	Ui::Animations::Simple _expandCatchUpAnimation;
@@ -177,8 +202,19 @@ private:
 	bool _expandIgnored : 1 = false;
 	bool _expanded : 1 = false;
 
+	mutable CollapsedGeometry _lastCollapsedGeometry;
+	mutable float64 _lastCollapsedRatio = 0.;
+
 	int _selected = -1;
 	int _pressed = -1;
+
+	rpl::event_stream<not_null<QWheelEvent*>> _verticalScrollEvents;
+
+	rpl::variable<TextWithEntities> _tooltipText;
+	rpl::variable<bool> _tooltipNotHidden;
+	Fn<void()> _tooltipHide;
+	std::unique_ptr<Ui::ImportantTooltip> _tooltip;
+	bool _tooltipWindowActive = false;
 
 	base::unique_qptr<Ui::PopupMenu> _menu;
 	base::has_weak_ptr _menuGuard;

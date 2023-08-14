@@ -165,8 +165,9 @@ Action::Action(
 		+ _st.itemStyle.font->height
 		+ st::defaultWhoRead.itemPadding.bottom()) {
 	const auto parent = parentMenu->menu();
-	const auto checkAppeared = [=, now = crl::now()] {
-		_appeared = (crl::now() - now) >= parentMenu->st().duration;
+	const auto delay = anim::Disabled() ? 0 : parentMenu->st().duration;
+	const auto checkAppeared = [=, now = crl::now()](bool force = false) {
+		_appeared = force || ((crl::now() - now) >= delay);
 	};
 
 	setAcceptBoth(true);
@@ -224,8 +225,10 @@ Action::Action(
 	enableMouseSelecting();
 
 	base::call_delayed(parentMenu->st().duration, this, [=] {
-		checkAppeared();
-		updateUserpicsFromContent();
+		if (!_appeared) {
+			checkAppeared(true);
+			updateUserpicsFromContent();
+		}
 	});
 }
 
@@ -614,7 +617,7 @@ void WhoReactedEntryAction::paint(Painter &&p) {
 			.textColor = (selected ? _st.itemFgOver : _st.itemFg)->c,
 			.now = crl::now(),
 			.position = QPoint(
-				width() - _st.itemPadding.right() - (size / ratio) + skip,
+				width() - _st.itemPadding.right() - size + skip,
 				(height() - _customSize) / 2),
 		});
 	}

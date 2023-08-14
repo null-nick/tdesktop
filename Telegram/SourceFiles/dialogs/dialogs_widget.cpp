@@ -526,7 +526,7 @@ void Widget::chosenRow(const ChosenRow &row) {
 		return;
 	} else if (history) {
 		const auto peer = history->peer;
-		if (const auto user = history->peer->asUser()) {
+		if (const auto user = peer->asUser()) {
 			if (row.message.fullId.msg == ShowAtUnreadMsgId) {
 				if (row.userpicClick
 					&& user->hasActiveStories()
@@ -549,6 +549,14 @@ void Widget::chosenRow(const ChosenRow &row) {
 			hideChildList();
 		}
 	} else if (const auto folder = row.key.folder()) {
+		if (row.userpicClick) {
+			const auto list = Data::StorySourcesList::Hidden;
+			const auto &sources = session().data().stories().sources(list);
+			if (!sources.empty()) {
+				controller()->openPeerStories(sources.front().id, list);
+				return;
+			}
+		}
 		controller()->openFolder(folder);
 		hideChildList();
 	}
@@ -785,7 +793,26 @@ void Widget::setupMainMenuToggle() {
 }
 
 void Widget::setupStories() {
-	trackScroll(_stories.get());
+	_stories->verticalScrollEvents(
+	) | rpl::start_with_next([=](not_null<QWheelEvent*> e) {
+		_scroll->viewportEvent(e);
+	}, _stories->lifetime());
+
+	if (!Core::App().settings().storiesClickTooltipHidden()) {
+		// Don't create tooltip
+		// until storiesClickTooltipHidden can be returned to false.
+		const auto hideTooltip = [=] {
+			Core::App().settings().setStoriesClickTooltipHidden(true);
+			Core::App().saveSettingsDelayed();
+		};
+		_stories->setShowTooltip(
+			parentWidget(),
+			rpl::combine(
+				Core::App().settings().storiesClickTooltipHiddenValue(),
+				shownValue(),
+				!rpl::mappers::_1 && rpl::mappers::_2),
+			hideTooltip);
+	}
 
 	_storiesContents.fire(Stories::ContentForSession(
 		&controller()->session(),
@@ -1359,6 +1386,15 @@ void Widget::jumpToTop(bool belowPinned) {
 	}
 }
 
+void Widget::raiseWithTooltip() {
+	raise();
+	if (_stories) {
+		Ui::PostponeCall(this, [=] {
+			_stories->raiseTooltip();
+		});
+	}
+}
+
 void Widget::scrollToDefault(bool verytop) {
 	if (verytop) {
 		//_scroll->verticalScrollBar()->setMinimum(0);
@@ -1436,6 +1472,7 @@ void Widget::stopWidthAnimation() {
 }
 
 void Widget::updateStoriesVisibility() {
+	updateLockUnlockVisibility();
 	if (!_stories) {
 		return;
 	}
@@ -1465,7 +1502,6 @@ void Widget::updateStoriesVisibility() {
 		if (_aboveScrollAdded > 0 && _updateScrollGeometryCached) {
 			_updateScrollGeometryCached();
 		}
-		updateLockUnlockVisibility();
 		updateLockUnlockPosition();
 	}
 }

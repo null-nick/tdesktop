@@ -1165,14 +1165,18 @@ void ParticipantsBoxController::restoreState(
 		if (my->wasLoading) {
 			loadMoreRows();
 		}
+		const auto was = _fullCountValue.current();
 		PeerListController::restoreState(std::move(state));
-		const auto count = delegate()->peerListFullRowsCount();
-		if (count > 0 || _allLoaded) {
+		const auto now = delegate()->peerListFullRowsCount();
+		if (now > 0 || _allLoaded) {
 			refreshDescription();
 			if (_stories) {
-				for (auto i = 0; i != count; ++i) {
+				for (auto i = 0; i != now; ++i) {
 					_stories->process(delegate()->peerListRowAt(i));
 				}
+			}
+			if (now != was) {
+				refreshRows();
 			}
 		}
 		if (_onlineSorter) {
@@ -1501,6 +1505,11 @@ void ParticipantsBoxController::loadMoreRows() {
 			LOG(("API Error: "
 				"channels.channelParticipantsNotModified received!"));
 		});
+		if (_offset > 0 && _role == Role::Admins && channel->isMegagroup()) {
+			if (channel->mgInfo->admins.empty() && channel->mgInfo->adminsLoaded) {
+				channel->mgInfo->adminsLoaded = false;
+			}
+		}
 		if (!firstLoad && !added) {
 			_allLoaded = true;
 		}
@@ -1675,7 +1684,7 @@ base::unique_qptr<Ui::PopupMenu> ParticipantsBoxController::rowContextMenu(
 			result->addAction(
 				tr::lng_context_restrict_user(tr::now),
 				crl::guard(this, [=] { showRestricted(user); }),
-				&st::menuIconRestrict);
+				&st::menuIconPermissions);
 		}
 	}
 	if (user && _additional.canRemoveParticipant(participant)) {

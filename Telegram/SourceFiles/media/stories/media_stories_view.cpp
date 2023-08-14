@@ -59,6 +59,10 @@ void View::updatePlayback(const Player::TrackState &state) {
 	_controller->updateVideoPlayback(state);
 }
 
+ClickHandlerPtr View::lookupLocationHandler(QPoint point) const {
+	return _controller->lookupLocationHandler(point);
+}
+
 bool View::subjumpAvailable(int delta) const {
 	return _controller->subjumpAvailable(delta);
 }
@@ -111,6 +115,21 @@ void View::tryProcessKeyInput(not_null<QKeyEvent*> e) {
 	_controller->tryProcessKeyInput(e);
 }
 
+bool View::allowStealthMode() const {
+	return _controller->allowStealthMode();
+}
+
+void View::setupStealthMode() {
+	_controller->setupStealthMode();
+}
+
+auto View::attachReactionsToMenu(
+	not_null<Ui::PopupMenu*> menu,
+	QPoint desiredPosition)
+-> AttachStripResult {
+	return _controller->attachReactionsToMenu(menu, desiredPosition);
+}
+
 SiblingView View::sibling(SiblingType type) const {
 	return _controller->sibling(type);
 }
@@ -121,6 +140,10 @@ Data::FileOrigin View::fileOrigin() const {
 
 TextWithEntities View::captionText() const {
 	return _controller->captionText();
+}
+
+bool View::skipCaption() const {
+	return _controller->skipCaption();
 }
 
 void View::showFullCaption() {
