@@ -167,6 +167,8 @@ PRIVATE
     api/api_user_privacy.h
     api/api_views.cpp
     api/api_views.h
+    api/api_websites.cpp
+    api/api_websites.h
     api/api_who_reacted.cpp
     api/api_who_reacted.h
     boxes/filters/edit_filter_box.cpp
@@ -411,6 +413,7 @@ PRIVATE
     core/crash_report_window.h
     core/crash_reports.cpp
     core/crash_reports.h
+    core/deadlock_detector.h
     core/file_utilities.cpp
     core/file_utilities.h
     core/launcher.cpp
@@ -1259,6 +1262,8 @@ PRIVATE
     settings/settings_main.h
     settings/settings_notifications.cpp
     settings/settings_notifications.h
+    settings/settings_notifications_type.cpp
+    settings/settings_notifications_type.h
     settings/settings_power_saving.cpp
     settings/settings_power_saving.h
     settings/settings_premium.cpp
@@ -1270,6 +1275,8 @@ PRIVATE
     settings/settings_scale_preview.cpp
     settings/settings_scale_preview.h
     settings/settings_type.h
+    settings/settings_websites.cpp
+    settings/settings_websites.h
     storage/details/storage_file_utilities.cpp
     storage/details/storage_file_utilities.h
     storage/details/storage_settings_scheme.cpp
@@ -1468,6 +1475,7 @@ PRIVATE
     qrc/emoji_5.qrc
     qrc/emoji_6.qrc
     qrc/emoji_7.qrc
+    qrc/emoji_8.qrc
     qrc/emoji_preview.qrc
     qrc/telegram/animations.qrc
     qrc/telegram/export.qrc

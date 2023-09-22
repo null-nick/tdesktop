@@ -359,6 +359,7 @@ public:
 	[[nodiscard]] Storage::SharedMediaTypesMask sharedMediaTypes() const;
 
 	void indexAsNewItem();
+	void addToSharedMediaIndex();
 	void removeFromSharedMediaIndex();
 
 	struct NotificationTextOptions {
@@ -574,7 +575,7 @@ private:
 	void translationToggle(
 		not_null<HistoryMessageTranslation*> translation,
 		bool used);
-	void setSelfDestruct(HistorySelfDestructType type, int ttlSeconds);
+	void setSelfDestruct(HistorySelfDestructType type, MTPint mtpTTLvalue);
 
 	TextWithEntities fromLinkText() const;
 	ClickHandlerPtr fromLink() const;

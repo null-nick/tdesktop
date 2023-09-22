@@ -88,7 +88,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "main/main_session_settings.h"
 #include "layout/layout_document_generic_preview.h"
 #include "platform/platform_overlay_widget.h"
-#include "settings/settings_premium.h"
 #include "storage/file_download.h"
 #include "storage/storage_account.h"
 #include "calls/calls_instance.h"
@@ -104,7 +103,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include <QtWidgets/QApplication>
 #include <QtCore/QBuffer>
 #include <QtGui/QGuiApplication>
-#include <QtGui/QClipboard>
 #include <QtGui/QWindow>
 #include <QtGui/QScreen>
 
@@ -1893,6 +1891,7 @@ void OverlayWidget::resizeContentByScreenSize() {
 		_y = content.y();
 		_w = content.width();
 		_h = content.height();
+		_zoom = 0;
 		updateNavigationControlsGeometry();
 		return;
 	}
@@ -2054,6 +2053,9 @@ void OverlayWidget::zoomOut() {
 }
 
 void OverlayWidget::zoomReset() {
+	if (_stories || _fullScreenVideo) {
+		return;
+	}
 	auto newZoom = _zoom;
 	const auto full = _fullScreenVideo ? _zoomToScreen : _zoomToDefault;
 	if (_zoom == 0) {
@@ -2508,19 +2510,26 @@ void OverlayWidget::downloadMedia() {
 		} else {
 			if (_document->filepath(true).isEmpty()
 				&& !_document->loading()) {
+				const auto document = _document;
+				const auto checkSaveStarted = [=] {
+					if (isHidden() || _document != document) {
+						return;
+					}
+					_documentLoadingTo = _document->loadingFilePath();
+					if (_stories && _documentLoadingTo.isEmpty()) {
+						const auto toName = _document->filepath(true);
+						if (!toName.isEmpty()) {
+							showSaveMsgToast(
+								toName,
+								tr::lng_mediaview_video_saved_to);
+						}
+					}
+				};
 				DocumentSaveClickHandler::SaveAndTrack(
 					_message ? _message->fullId() : FullMsgId(),
 					_document,
-					DocumentSaveClickHandler::Mode::ToFile);
-				_documentLoadingTo = _document->loadingFilePath();
-				if (_stories && _documentLoadingTo.isEmpty()) {
-					toName = _document->filepath(true);
-					if (!toName.isEmpty()) {
-						showSaveMsgToast(
-							toName,
-							tr::lng_mediaview_video_saved_to);
-					}
-				}
+					DocumentSaveClickHandler::Mode::ToFile,
+					crl::guard(_widget, checkSaveStarted));
 			} else {
 				_saveVisible = computeSaveButtonVisible();
 				update(_saveNavOver);
@@ -3912,10 +3921,12 @@ void OverlayWidget::initThemePreview() {
 			_themePreviewId = 0;
 			_themePreview = std::move(result);
 			if (_themePreview) {
+				using TextTransform = Ui::RoundButton::TextTransform;
 				_themeApply.create(
 					_body,
 					tr::lng_theme_preview_apply(),
 					st::themePreviewApplyButton);
+				_themeApply->setTextTransform(TextTransform::NoTransform);
 				_themeApply->show();
 				_themeApply->setClickedCallback([=] {
 					const auto &object = Background()->themeObject();
@@ -3932,6 +3943,7 @@ void OverlayWidget::initThemePreview() {
 					_body,
 					tr::lng_cancel(),
 					st::themePreviewCancelButton);
+				_themeCancel->setTextTransform(TextTransform::NoTransform);
 				_themeCancel->show();
 				_themeCancel->setClickedCallback([this] { close(); });
 				if (const auto slug = _themeCloudData.slug; !slug.isEmpty()) {
@@ -3939,6 +3951,7 @@ void OverlayWidget::initThemePreview() {
 						_body,
 						tr::lng_theme_share(),
 						st::themePreviewCancelButton);
+					_themeShare->setTextTransform(TextTransform::NoTransform);
 					_themeShare->show();
 					_themeShare->setClickedCallback([=] {
 						QGuiApplication::clipboard()->setText(
@@ -4371,7 +4384,9 @@ int OverlayWidget::storiesTopNotchSkip() {
 void OverlayWidget::playbackToggleFullScreen() {
 	Expects(_streamed != nullptr);
 
-	if (!videoShown() || (!_streamed->controls && !_fullScreenVideo)) {
+	if (_stories
+		|| !videoShown()
+		|| (!_streamed->controls && !_fullScreenVideo)) {
 		return;
 	}
 	_fullScreenVideo = !_fullScreenVideo;
@@ -5166,7 +5181,9 @@ void OverlayWidget::handleWheelEvent(not_null<QWheelEvent*> e) {
 }
 
 void OverlayWidget::setZoomLevel(int newZoom, bool force) {
-	if (!force && _zoom == newZoom) {
+	if (_stories
+		|| (!force && _zoom == newZoom)
+		|| (_fullScreenVideo && newZoom != kZoomToScreenLevel)) {
 		return;
 	}
 
@@ -5520,10 +5537,15 @@ bool OverlayWidget::handleDoubleClick(
 		Qt::MouseButton button) {
 	updateOver(position);
 
-	if (_over != Over::Video || !_streamed || button != Qt::LeftButton) {
+	if (_over != Over::Video || button != Qt::LeftButton) {
 		return false;
 	} else if (_stories) {
+		if (ClickHandler::getActive()) {
+			return false;
+		}
 		toggleFullScreen(_windowed);
+	} else if (!_streamed) {
+		return false;
 	} else {
 		playbackToggleFullScreen();
 		playbackPauseResume();
@@ -5668,7 +5690,7 @@ void OverlayWidget::updateOver(QPoint pos) {
 		lnk = _groupThumbs->getState(point);
 		lnkhost = this;
 	} else if (_stories) {
-		lnk = _stories->lookupLocationHandler(pos);
+		lnk = _stories->lookupAreaHandler(pos);
 		lnkhost = this;
 	}
 

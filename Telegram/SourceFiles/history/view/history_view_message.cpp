@@ -759,7 +759,9 @@ QSize Message::performCountOptimalSize() {
 					: item->hiddenSenderInfo()->nameText();
 				auto namew = st::msgPadding.left()
 					+ name.maxWidth()
-					+ (_fromNameStatus ? st::dialogsPremiumIcon.width() : 0)
+					+ (_fromNameStatus
+						? st::dialogsPremiumIcon.icon.width()
+						: 0)
 					+ st::msgPadding.right();
 				if (via && !displayForwardedFrom()) {
 					namew += st::msgServiceFont->spacew + via->maxWidth
@@ -1027,9 +1029,13 @@ void Message::draw(Painter &p, const PaintContext &context) const {
 
 		auto trect = inner.marginsRemoved(st::msgPadding);
 
-		const auto reactionsTop = (reactionsInBubble && !_viewButton)
-			? st::mediaInBubbleSkip
+		const auto additionalInfoSkip = (mediaDisplayed
+			&& !media->additionalInfoString().isEmpty())
+			? st::msgDateFont->height
 			: 0;
+		const auto reactionsTop = (reactionsInBubble && !_viewButton)
+			? (additionalInfoSkip + st::mediaInBubbleSkip)
+			: additionalInfoSkip;
 		const auto reactionsHeight = reactionsInBubble
 			? (reactionsTop + _reactions->height())
 			: 0;
@@ -1354,7 +1360,7 @@ void Message::paintFromName(
 		return &info->nameText();
 	}();
 	const auto statusWidth = _fromNameStatus
-		? st::dialogsPremiumIcon.width()
+		? st::dialogsPremiumIcon.icon.width()
 		: 0;
 	if (statusWidth && availableWidth > statusWidth) {
 		const auto x = availableLeft
@@ -1394,7 +1400,7 @@ void Message::paintFromName(
 				.paused = context.paused || On(PowerSaving::kEmojiStatus),
 			});
 		} else {
-			st::dialogsPremiumIcon.paint(p, x, y, width(), color);
+			st::dialogsPremiumIcon.icon.paint(p, x, y, width(), color);
 		}
 		availableWidth -= statusWidth;
 	}
@@ -1403,7 +1409,8 @@ void Message::paintFromName(
 	nameText->drawElided(p, availableLeft, trect.top(), availableWidth);
 	const auto skipWidth = nameText->maxWidth()
 		+ (_fromNameStatus
-			? (st::dialogsPremiumIcon.width() + st::msgServiceFont->spacew)
+			? (st::dialogsPremiumIcon.icon.width()
+				+ st::msgServiceFont->spacew)
 			: 0)
 		+ st::msgServiceFont->spacew;
 	availableLeft += skipWidth;
@@ -1719,7 +1726,8 @@ void Message::clickHandlerPressedChanged(
 		toggleTopicButtonRipple(pressed);
 	} else if (_viewButton) {
 		_viewButton->checkLink(handler, pressed);
-	} else if (const auto reply = displayedReply()) {
+	} else if (const auto reply = displayedReply();
+			reply && (handler == reply->replyToLink())) {
 		toggleReplyRipple(pressed);
 	}
 }
@@ -1790,6 +1798,7 @@ void Message::toggleReplyRipple(bool pressed) {
 
 			const auto &padding = st::msgReplyPadding;
 			const auto geometry = countGeometry();
+			const auto item = data();
 			const auto size = QSize(
 				geometry.width()
 					- padding.left() / 2
@@ -1802,7 +1811,7 @@ void Message::toggleReplyRipple(bool pressed) {
 				Images::Round(
 					Ui::RippleAnimation::MaskByDrawer(size, true, nullptr),
 					corners),
-				[=] { repaint(); });
+				[=] { item->history()->owner().requestItemRepaint(item); });
 		}
 		if (reply->ripple.animation) {
 			reply->ripple.animation->add(reply->ripple.lastPoint);
@@ -2043,9 +2052,13 @@ TextState Message::textState(
 			return result;
 		}
 		auto trect = inner.marginsRemoved(st::msgPadding);
-		const auto reactionsTop = (reactionsInBubble && !_viewButton)
-			? st::mediaInBubbleSkip
+		const auto additionalInfoSkip = (mediaDisplayed
+			&& !media->additionalInfoString().isEmpty())
+			? st::msgDateFont->height
 			: 0;
+		const auto reactionsTop = (reactionsInBubble && !_viewButton)
+			? (additionalInfoSkip + st::mediaInBubbleSkip)
+			: additionalInfoSkip;
 		const auto reactionsHeight = reactionsInBubble
 			? (reactionsTop + _reactions->height())
 			: 0;
@@ -3515,7 +3528,7 @@ void Message::fromNameUpdated(int width) const {
 				- st::msgPadding.right()
 				- nameText->maxWidth()
 				+ (_fromNameStatus
-					? (st::dialogsPremiumIcon.width()
+					? (st::dialogsPremiumIcon.icon.width()
 						+ st::msgServiceFont->spacew)
 					: 0)
 				- st::msgServiceFont->spacew);
@@ -3781,6 +3794,10 @@ int Message::resizeContentGetHeight(int newWidth) {
 			if (reactionsInBubble) {
 				if (!mediaDisplayed || _viewButton) {
 					newHeight += st::mediaInBubbleSkip;
+				} else if (!media->additionalInfoString().isEmpty()) {
+					// In round videos in a web page status text is painted
+					// in the bottom left corner, reactions should be below.
+					newHeight += st::msgDateFont->height;
 				}
 				newHeight += _reactions->height();
 			}
@@ -3813,6 +3830,7 @@ int Message::resizeContentGetHeight(int newWidth) {
 
 		if (reply) {
 			reply->resize(contentWidth - st::msgPadding.left() - st::msgPadding.right());
+			reply->ripple.animation = nullptr;
 			newHeight += st::msgReplyPadding.top() + st::msgReplyBarSize.height() + st::msgReplyPadding.bottom();
 		}
 		if (needInfoDisplay()) {

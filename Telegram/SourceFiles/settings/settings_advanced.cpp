@@ -20,7 +20,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/widgets/buttons.h"
 #include "ui/gl/gl_detection.h"
 #include "ui/layers/generic_box.h"
-#include "ui/text/text_utilities.h" // Ui::Text::ToUpper
 #include "ui/text/format_values.h"
 #include "ui/boxes/single_choice_box.h"
 #include "ui/painter.h"
@@ -144,7 +143,7 @@ void SetupUpdate(not_null<Ui::VerticalLayout*> container) {
 		st::settingsButtonNoIcon);
 	const auto update = Ui::CreateChild<Button>(
 		check.get(),
-		tr::lng_update_telegram() | Ui::Text::ToUpper(),
+		tr::lng_update_telegram(),
 		st::settingsUpdate);
 	update->hide();
 	check->widthValue() | rpl::start_with_next([=](int width) {
@@ -410,7 +409,9 @@ void SetupWindowTitleContent(
 
 	if (Ui::Platform::NativeWindowFrameSupported()) {
 		const auto nativeFrame = addCheckbox(
-			tr::lng_settings_native_frame(),
+			Platform::IsWayland()
+				? tr::lng_settings_qt_frame()
+				: tr::lng_settings_native_frame(),
 			Core::App().settings().nativeWindowFrame());
 
 		nativeFrame->checkedChanges(
@@ -551,27 +552,28 @@ void SetupSystemIntegrationContent(
 		Core::App().saveSettings();
 	}, roundIcon->lifetime());
 #endif // OS_MAC_STORE
-
-#else // Q_OS_MAC
-	const auto closeToTaskbar = addSlidingCheckbox(
-		tr::lng_settings_close_to_taskbar(),
-		Core::App().settings().closeToTaskbar());
-
-	const auto closeToTaskbarShown = std::make_shared<rpl::variable<bool>>(false);
-	Core::App().settings().workModeValue(
-	) | rpl::start_with_next([=](WorkMode workMode) {
-		*closeToTaskbarShown = !Core::App().tray().has();
-	}, closeToTaskbar->lifetime());
-
-	closeToTaskbar->toggleOn(closeToTaskbarShown->value());
-	closeToTaskbar->entity()->checkedChanges(
-	) | rpl::filter([=](bool checked) {
-		return (checked != Core::App().settings().closeToTaskbar());
-	}) | rpl::start_with_next([=](bool checked) {
-		Core::App().settings().setCloseToTaskbar(checked);
-		Local::writeSettings();
-	}, closeToTaskbar->lifetime());
 #endif // Q_OS_MAC
+
+	if (!Platform::RunInBackground()) {
+		const auto closeToTaskbar = addSlidingCheckbox(
+			tr::lng_settings_close_to_taskbar(),
+			Core::App().settings().closeToTaskbar());
+
+		const auto closeToTaskbarShown = std::make_shared<rpl::variable<bool>>(false);
+		Core::App().settings().workModeValue(
+		) | rpl::start_with_next([=](WorkMode workMode) {
+			*closeToTaskbarShown = !Core::App().tray().has();
+		}, closeToTaskbar->lifetime());
+
+		closeToTaskbar->toggleOn(closeToTaskbarShown->value());
+		closeToTaskbar->entity()->checkedChanges(
+		) | rpl::filter([=](bool checked) {
+			return (checked != Core::App().settings().closeToTaskbar());
+		}) | rpl::start_with_next([=](bool checked) {
+			Core::App().settings().setCloseToTaskbar(checked);
+			Local::writeSettings();
+		}, closeToTaskbar->lifetime());
+	}
 
 	if (Platform::AutostartSupported() && controller) {
 		const auto minimizedToggled = [=] {
@@ -727,6 +729,7 @@ void ArchiveSettingsBox(
 	))->toggledChanges(
 	) | rpl::filter([=](bool toggled) {
 		const auto current = privacy->unarchiveOnNewMessageCurrent();
+		state->foldersWrap->toggle(!toggled, anim::type::normal);
 		return toggled != (current == Unarchive::None);
 	}) | rpl::start_with_next([=](bool toggled) {
 		privacy->updateUnarchiveOnNewMessage(toggled
@@ -734,7 +737,6 @@ void ArchiveSettingsBox(
 			: state->folders->toggled()
 			? Unarchive::NotInFoldersUnmuted
 			: Unarchive::AnyUnmuted);
-		state->foldersWrap->toggle(!toggled, anim::type::normal);
 	}, container->lifetime());
 
 	AddSkip(container);

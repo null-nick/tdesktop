@@ -479,6 +479,14 @@ storiesRemoveSet: IconButton(stickerPanRemoveSet) {
 	iconOver: icon {{ "simple_close", storiesComposeGrayIcon }};
 	ripple: storiesComposeRippleLight;
 }
+storiesColorAll: IconButton(emojiPanColorAll) {
+	icon: icon {{ "emoji/emoji_skin", storiesComposeGrayIcon }};
+	iconOver: icon {{ "emoji/emoji_skin", storiesComposeGrayIcon }};
+	ripple: storiesComposeRippleLight;
+}
+storiesColorAllLabel: FlatLabel(emojiPanColorAllLabel) {
+	textFg: storiesComposeGrayText;
+}
 storiesMenuSeparator: mediaviewMenuSeparator;
 storiesMenu: Menu(defaultMenu) {
 	itemBg: groupCallMenuBg;
@@ -588,6 +596,8 @@ storiesEmojiPan: EmojiPan(defaultEmojiPan) {
 		rippleBgActive: storiesComposeBgOver;
 	}
 	search: storiesEmojiTabbedSearch;
+	colorAll: storiesColorAll;
+	colorAllLabel: storiesColorAllLabel;
 	removeSet: storiesRemoveSet;
 	boxLabel: storiesBoxLabel;
 	icons: ComposeIcons {
@@ -980,4 +990,27 @@ storiesStealthFeatureSkip: 2px;
 storiesStealthBoxBottom: 11px;
 storiesStealthToast: Toast(defaultMultilineToast) {
 	maxWidth: 340px;
+}
+
+storiesViewsPosition: point(4px, 29px);
+storiesViewsIcon: icon{{ "mediaview/views", storiesComposeGrayText }};
+storiesViewsText: FlatLabel(defaultFlatLabel) {
+	textFg: storiesComposeGrayText;
+}
+storiesViewsTextPosition: point(26px, 14px);
+
+storiesLikesPosition: point(0px, 29px);
+storiesLikesIcon: icon {{ "chat/input_like", storiesComposeWhiteText }};
+storiesLikesText: FlatLabel(defaultFlatLabel) {
+	textFg: storiesComposeWhiteText;
+	style: semiboldTextStyle;
+}
+storiesLikesTextPosition: point(41px, 14px);
+storiesLikesTextRightSkip: 8px;
+storiesLikesEmptyRightSkip: 2px;
+
+storiesLikeCountStyle: TextStyle(defaultTextStyle) {
+	font: font(32px semibold);
+	linkFont: font(32px semibold);
+	linkFontOver: font(32px semibold underline);
 }
