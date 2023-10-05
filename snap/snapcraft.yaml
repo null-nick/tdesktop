@@ -196,6 +196,7 @@ parts:
     stage-packages:
       - libc-bin
       - libgdk-pixbuf-2.0-0
+      - libnvidia-egl-wayland1
       - libxkbcommon0
       - locales-all
       - shared-mime-info
@@ -460,9 +461,9 @@ parts:
       - libxkbcommon-x11-0
       - zlib1g
     override-pull: |
-      QT=6.5.2
+      QT=6.6.0
 
-      git clone -b v${QT} --depth=1 https://code.qt.io/qt/qt5.git .
+      git clone -b v${QT}-rc1 --depth=1 https://code.qt.io/qt/qt5.git .
       git submodule update --init --recursive --depth=1 qtbase qtdeclarative qtwayland qtimageformats qtsvg qtshadertools
 
       cd qtbase
@@ -500,6 +501,7 @@ parts:
       - -./usr/lib/$CRAFT_ARCH_TRIPLET/*.la
       - -./usr/lib/$CRAFT_ARCH_TRIPLET/*.prl
       - -./usr/lib/$CRAFT_ARCH_TRIPLET/*.so
+      - -./usr/plugins/imageformats/libqsvg.so
       - -./usr/libexec
       - -./usr/mkspecs
       - -./usr/modules

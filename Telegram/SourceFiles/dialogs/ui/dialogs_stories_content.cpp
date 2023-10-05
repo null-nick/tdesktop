@@ -330,8 +330,8 @@ State::State(not_null<Data::Stories*> data, Data::StorySourcesList list)
 }
 
 Content State::next() {
-	auto result = Content();
 	const auto &sources = _data->sources(_list);
+	auto result = Content{ .total = int(sources.size()) };
 	result.elements.reserve(sources.size());
 	for (const auto &info : sources) {
 		const auto source = _data->source(info.id);
@@ -390,8 +390,10 @@ rpl::producer<Content> LastForPeer(not_null<PeerData*> peer) {
 	) | rpl::map([=] {
 		auto ids = std::vector<StoryId>();
 		auto readTill = StoryId();
+		auto total = 0;
 		if (const auto source = stories->source(peerId)) {
 			readTill = source->readTill;
+			total = int(source->ids.size());
 			ids = ranges::views::all(source->ids)
 				| ranges::views::reverse
 				| ranges::views::take(kShownLastCount)
@@ -420,7 +422,7 @@ rpl::producer<Content> LastForPeer(not_null<PeerData*> peer) {
 				}
 				auto done = true;
 				auto resolving = false;
-				auto result = Content{};
+				auto result = Content{ .total = total };
 				for (const auto id : ids) {
 					const auto storyId = FullStoryId{ peerId, id };
 					const auto maybe = stories->lookup(storyId);
@@ -512,12 +514,19 @@ void FillSourceMenu(
 			controller->showSection(Info::Stories::Make(peer));
 		}, &st::menuIconStoriesSavedSection);
 	} else {
-		add(tr::lng_profile_send_message(tr::now), [=] {
+		const auto channel = peer->isChannel();
+		const auto showHistoryText = channel
+			? tr::lng_context_open_channel(tr::now)
+			: tr::lng_profile_send_message(tr::now);
+		add(showHistoryText, [=] {
 			controller->showPeerHistory(peer);
-		}, &st::menuIconChatBubble);
-		add(tr::lng_context_view_profile(tr::now), [=] {
+		}, channel ? &st::menuIconChannel : &st::menuIconChatBubble);
+		const auto viewProfileText = channel
+			? tr::lng_context_view_channel(tr::now)
+			: tr::lng_context_view_profile(tr::now);
+		add(viewProfileText, [=] {
 			controller->showPeerInfo(peer);
-		}, &st::menuIconProfile);
+		}, channel ? &st::menuIconInfo : &st::menuIconProfile);
 		const auto in = [&](Data::StorySourcesList list) {
 			return ranges::contains(
 				owner->stories().sources(list),
