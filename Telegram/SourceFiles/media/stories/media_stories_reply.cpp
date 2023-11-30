@@ -193,11 +193,11 @@ void ReplyArea::sendReaction(const Data::ReactionId &id) {
 }
 
 void ReplyArea::send(Api::SendOptions options) {
-	const auto webPageId = _controls->webPageId();
+	const auto webPageDraft = _controls->webPageDraft();
 
 	auto message = Api::MessageToSend(prepareSendAction(options));
 	message.textWithTags = _controls->getTextWithAppliedMarkdown();
-	message.webPageId = webPageId;
+	message.webPage = webPageDraft;
 
 	send(std::move(message), options);
 }
@@ -500,7 +500,7 @@ bool ReplyArea::confirmSendingFiles(
 	auto confirmed = [=](auto &&...args) {
 		sendingFilesConfirmed(std::forward<decltype(args)>(args)...);
 	};
-	auto box = Box<SendFilesBox>(SendFilesBoxDescriptor{
+	show->show(Box<SendFilesBox>(SendFilesBoxDescriptor{
 		.show = show,
 		.list = std::move(list),
 		.caption = _controls->getTextWithAppliedMarkdown(),
@@ -511,10 +511,7 @@ bool ReplyArea::confirmSendingFiles(
 		.stOverride = &st::storiesComposeControls,
 		.confirmed = crl::guard(this, confirmed),
 		.cancelled = _controls->restoreTextCallback(insertTextOnCancel),
-	});
-	if (const auto shown = show->show(std::move(box))) {
-		shown->setCloseByOutsideClick(false);
-	}
+	}));
 
 	return true;
 }

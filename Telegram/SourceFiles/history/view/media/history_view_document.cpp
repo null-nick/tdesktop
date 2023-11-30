@@ -306,7 +306,7 @@ QSize Document::countOptimalSize() {
 	const auto voice = Get<HistoryDocumentVoice>();
 	if (voice) {
 		const auto session = &_realParent->history()->session();
-		if (!session->premium()) {
+		if (!session->premium() && !session->api().transcribes().trialsSupport()) {
 			voice->transcribe = nullptr;
 			voice->transcribeText = {};
 		} else {
@@ -744,16 +744,20 @@ void Document::draw(
 	if (const auto captioned = Get<HistoryDocumentCaptioned>()) {
 		p.setPen(stm->historyTextFg);
 		_parent->prepareCustomEmojiPaint(p, context, captioned->caption);
+		auto highlightRequest = context.computeHighlightCache();
 		captioned->caption.draw(p, {
 			.position = { st::msgPadding.left(), captiontop },
 			.availableWidth = captionw,
 			.palette = &stm->textPalette,
+			.pre = stm->preCache.get(),
+			.blockquote = context.quoteCache(parent()->colorIndex()),
 			.colors = context.st->highlightColors(),
 			.spoiler = Ui::Text::DefaultSpoilerCache(),
 			.now = context.now,
 			.pausedEmoji = context.paused || On(PowerSaving::kEmojiChat),
 			.pausedSpoiler = context.paused || On(PowerSaving::kChatSpoiler),
 			.selection = selection,
+			.highlight = highlightRequest ? &*highlightRequest : nullptr,
 		});
 	}
 }
@@ -1208,6 +1212,43 @@ TextForMimeData Document::selectedText(TextSelection selection) const {
 	return result;
 }
 
+SelectedQuote Document::selectedQuote(TextSelection selection) const {
+	if (const auto voice = Get<HistoryDocumentVoice>()) {
+		const auto length = voice->transcribeText.length();
+		if (selection.from < length) {
+			return {};
+		}
+		selection = HistoryView::UnshiftItemSelection(
+			selection,
+			voice->transcribeText);
+	}
+	if (const auto captioned = Get<HistoryDocumentCaptioned>()) {
+		return Element::FindSelectedQuote(
+			captioned->caption,
+			selection,
+			_realParent);
+	}
+	return {};
+}
+
+TextSelection Document::selectionFromQuote(
+		const SelectedQuote &quote) const {
+	if (const auto captioned = Get<HistoryDocumentCaptioned>()) {
+		const auto result = Element::FindSelectionFromQuote(
+			captioned->caption,
+			quote);
+		if (result.empty()) {
+			return {};
+		} else if (const auto voice = Get<HistoryDocumentVoice>()) {
+			return HistoryView::ShiftItemSelection(
+				result,
+				voice->transcribeText);
+		}
+		return result;
+	}
+	return {};
+}
+
 bool Document::uploading() const {
 	return _data->uploading();
 }
@@ -1354,6 +1395,8 @@ void Document::drawGrouped(
 		float64 highlightOpacity,
 		not_null<uint64*> cacheKey,
 		not_null<QPixmap*> cache) const {
+	const auto maybeMediaHighlight = context.highlightPathCache
+		&& context.highlightPathCache->isEmpty();
 	p.translate(geometry.topLeft());
 	draw(
 		p,
@@ -1361,6 +1404,10 @@ void Document::drawGrouped(
 		geometry.width(),
 		LayoutMode::Grouped,
 		rounding);
+	if (maybeMediaHighlight
+		&& !context.highlightPathCache->isEmpty()) {
+		context.highlightPathCache->translate(geometry.topLeft());
+	}
 	p.translate(-geometry.topLeft());
 }
 

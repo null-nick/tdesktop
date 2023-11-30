@@ -131,8 +131,6 @@ infoTopBarTitle: FlatLabel(defaultFlatLabel) {
 	maxHeight: 20px;
 	style: TextStyle(defaultTextStyle) {
 		font: font(14px semibold);
-		linkFont: font(14px semibold);
-		linkFontOver: font(14px semibold);
 	}
 }
 infoTopBarMediaCancel: IconButton(infoTopBarBack) {
@@ -301,11 +299,6 @@ infoProfilePhotoSize: size(
 infoProfileStatus: FlatLabel(defaultFlatLabel) {
 	maxHeight: 18px;
 	textFg: windowSubTextFg;
-	style: TextStyle(defaultTextStyle) {
-		font: normalFont;
-		linkFont: normalFont;
-		linkFontOver: normalFont;
-	}
 }
 infoProfileCover: InfoProfileCover {
 	height: 108px;
@@ -320,8 +313,6 @@ infoProfileCover: InfoProfileCover {
 		textFg: windowBoldFg;
 		style: TextStyle(defaultTextStyle) {
 			font: font(16px semibold);
-			linkFont: font(16px semibold);
-			linkFontOver: font(16px semibold underline);
 		}
 	}
 	nameLeft: 109px;
@@ -333,7 +324,6 @@ infoProfileCover: InfoProfileCover {
 }
 infoProfileMegagroupCover: InfoProfileCover(infoProfileCover) {
 	status: FlatLabel(infoProfileStatus) {
-		style: defaultTextStyle;
 		palette: TextPalette(defaultTextPalette) {
 			linkFg: windowSubTextFg;
 		}
@@ -405,6 +395,7 @@ infoIconMediaFile: icon {{ "info/info_media_file", infoIconFg }};
 infoIconMediaAudio: icon {{ "info/info_media_audio", infoIconFg }};
 infoIconMediaLink: icon {{ "info/info_media_link", infoIconFg }};
 infoIconMediaGroup: icon {{ "info/info_common_groups", infoIconFg }};
+infoIconMediaChannel: icon {{ "menu/channel", infoIconFg, point(4px, 4px) }};
 infoIconMediaVoice: icon {{ "info/info_media_voice", infoIconFg }};
 infoIconMediaStories: icon {{ "info/info_media_stories", infoIconFg }};
 infoIconMediaStoriesArchive: icon {{ "info/info_stories_archive", infoIconFg }};
@@ -427,8 +418,6 @@ infoBlockHeaderLabel: FlatLabel(infoProfileStatus) {
 	textFg: windowBoldFg;
 	style: TextStyle(defaultTextStyle) {
 		font: semiboldFont;
-		linkFont: semiboldFont;
-		linkFontOver: semiboldFont;
 	}
 }
 infoBlockHeaderPosition: point(79px, 17px);
@@ -542,7 +531,7 @@ infoMediaLeft: 3px;
 infoMediaMargin: margins(0px, 6px, 0px, 2px);
 infoMediaMinGridSize: 90px;
 
-infoCommonGroupsMargin: margins(0px, 13px, 0px, 2px);
+infoCommonGroupsMargin: margins(0px, 2px, 0px, 2px);
 infoCommonGroupsListItem: PeerListItem(defaultPeerListItem) {
 	height: 52px;
 	photoSize: 40px;
@@ -550,8 +539,6 @@ infoCommonGroupsListItem: PeerListItem(defaultPeerListItem) {
 	namePosition: point(71px, 15px);
 	nameStyle: TextStyle(defaultTextStyle) {
 		font: font(14px semibold);
-		linkFont: font(14px semibold);
-		linkFontOver: font(14px semibold);
 	}
 	statusPosition: point(79px, 31px);
 }
@@ -614,6 +601,20 @@ manageDeleteGroupButton: SettingsCountButton(manageGroupNoIconButton) {
 		textFgOver: attentionButtonFg;
 	}
 }
+
+manageGroupReactions: IconButton(defaultIconButton) {
+	width: 24px;
+	height: 36px;
+	icon: icon{{ "info/edit/stickers_add", historyComposeIconFg }};
+	iconOver: icon{{ "info/edit/stickers_add", historyComposeIconFgOver }};
+}
+manageGroupReactionsField: InputField(defaultInputField) {
+	textMargins: margins(1px, 38px, 24px, 8px);
+	placeholderShift: -32px;
+	heightMin: 66px;
+	heightMax: 158px;
+}
+manageGroupReactionsTextSkip: 16px;
 
 infoEmptyFg: windowSubTextFg;
 infoEmptyPhoto: icon {{ "info/info_media_photo_empty", infoEmptyFg }};
@@ -772,7 +773,12 @@ topBarConnectingAnimation: InfiniteRadialAnimation(defaultInfiniteRadialAnimatio
 	size: size(8px, 8px);
 }
 
-inviteLinkFieldHeight: 44px;
+inviteLinkTitleRight: FlatLabel(defaultSubsectionTitle) {
+	minWidth: 0px;
+}
+
+inviteLinkFieldRadius: 5px;
+inviteLinkFieldHeight: 42px;
 inviteLinkFieldMargin: margins(14px, 12px, 36px, 9px);
 inviteLinkThreeDotsIcon: icon {{ "info/edit/dotsmini", dialogsMenuIconFg }};
 inviteLinkThreeDotsIconOver: icon {{ "info/edit/dotsmini", dialogsMenuIconFgOver }};
@@ -787,10 +793,14 @@ inviteLinkThreeDots: IconButton(defaultIconButton) {
 	rippleAreaSize: 0px;
 }
 inviteLinkFieldPadding: margins(22px, 7px, 22px, 14px);
+inviteLinkFieldLabel: FlatLabel(defaultFlatLabel) {
+	align: align(center);
+}
 
 inviteLinkButton: RoundButton(defaultActiveButton) {
 	height: 36px;
 	textTop: 9px;
+	radius: 6px;
 }
 inviteLinkButtonsPadding: margins(22px, 0px, 22px, 0px);
 inviteLinkButtonsSkip: 10px;
@@ -924,8 +934,6 @@ shortInfoCover: ShortInfoCover {
 		maxHeight: 19px;
 		style: TextStyle(defaultTextStyle) {
 			font: font(15px semibold);
-			linkFont: font(15px semibold);
-			linkFontOver: font(15px semibold underline);
 		}
 	}
 	namePosition: point(25px, 37px);
@@ -945,3 +953,22 @@ shortInfoCover: ShortInfoCover {
 }
 
 permissionsExpandIcon: icon{{ "info/edit/expand_arrow_small", windowBoldFg }};
+
+similarChannelsLockOverlap: 58px;
+similarChannelsLockFade: 58px;
+similarChannelsLock: RoundButton(defaultActiveButton) {
+	height: 44px;
+	textTop: 12px;
+	font: font(13px semibold);
+}
+similarChannelsLockLabel: FlatLabel(defaultFlatLabel) {
+	textFg: premiumButtonFg;
+	style: semiboldTextStyle;
+}
+similarChannelsLockPadding: margins(12px, 12px, 12px, 12px);
+similarChannelsLockAbout: FlatLabel(defaultFlatLabel) {
+	textFg: windowSubTextFg;
+	align: align(top);
+	minWidth: 128px;
+}
+similarChannelsLockAboutPadding: margins(12px, 12px, 12px, 12px);

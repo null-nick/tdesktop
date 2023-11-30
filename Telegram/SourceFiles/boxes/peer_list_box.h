@@ -11,9 +11,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/empty_userpic.h"
 #include "ui/unread_badge.h"
 #include "ui/userpic_view.h"
-#include "boxes/abstract_box.h"
-#include "mtproto/sender.h"
-#include "data/data_cloud_file.h"
+#include "ui/layers/box_content.h"
 #include "base/timer.h"
 
 namespace style {
@@ -53,6 +51,8 @@ using PaintRoundImageCallback = Fn<void(
 	not_null<PeerData*> peer);
 
 using PeerListRowId = uint64;
+
+[[nodiscard]] PeerListRowId UniqueRowIdFromString(const QString &d);
 
 class PeerListRow {
 public:
@@ -139,6 +139,9 @@ public:
 	}
 	virtual void rightActionStopLastRipple() {
 	}
+	[[nodiscard]] virtual float64 opacity() {
+		return 1.;
+	}
 
 	// By default elements code falls back to a simple right action code.
 	virtual int elementsCount() const;
@@ -185,8 +188,8 @@ public:
 	void setIsSearchResult(bool isSearchResult) {
 		_isSearchResult = isSearchResult;
 	}
-	void setIsSavedMessagesChat(bool isSavedMessagesChat) {
-		_isSavedMessagesChat = isSavedMessagesChat;
+	void setSavedMessagesChatStatus(QString savedMessagesStatus) {
+		_savedMessagesStatus = savedMessagesStatus;
 	}
 	void setIsRepliesMessagesChat(bool isRepliesMessagesChat) {
 		_isRepliesMessagesChat = isRepliesMessagesChat;
@@ -278,12 +281,12 @@ private:
 	StatusType _statusType = StatusType::Online;
 	crl::time _statusValidTill = 0;
 	base::flat_set<QChar> _nameFirstLetters;
+	QString _savedMessagesStatus;
 	int _absoluteIndex = -1;
 	State _disabledState = State::Active;
 	bool _hidden : 1 = false;
 	bool _initialized : 1 = false;
 	bool _isSearchResult : 1 = false;
-	bool _isSavedMessagesChat : 1 = false;
 	bool _isRepliesMessagesChat : 1 = false;
 
 };
@@ -330,10 +333,6 @@ public:
 	virtual std::optional<QPoint> peerListLastRowMousePosition() = 0;
 	virtual void peerListSortRows(Fn<bool(const PeerListRow &a, const PeerListRow &b)> compare) = 0;
 	virtual int peerListPartitionRows(Fn<bool(const PeerListRow &a)> border) = 0;
-	virtual void peerListShowBox(
-		object_ptr<Ui::BoxContent> content,
-		Ui::LayerOptions options = Ui::LayerOption::KeepOther) = 0;
-	virtual void peerListHideLayer() = 0;
 	virtual std::shared_ptr<Main::SessionShow> peerListUiShow() = 0;
 
 	template <typename PeerDataRange>
@@ -517,8 +516,8 @@ public:
 	void peerListSearchAddRow(PeerListRowId id) override;
 	void peerListSearchRefreshRows() override;
 
-	[[nodiscard]] virtual bool respectSavedMessagesChat() const {
-		return false;
+	[[nodiscard]] virtual QString savedMessagesChatStatus() const {
+		return QString();
 	}
 	[[nodiscard]] virtual int customRowHeight() {
 		Unexpected("PeerListController::customRowHeight.");
@@ -1005,14 +1004,6 @@ public:
 			object_ptr<Ui::FlatLabel> description) override {
 		description.destroy();
 	}
-	void peerListShowBox(
-		object_ptr<Ui::BoxContent> content,
-		Ui::LayerOptions options = Ui::LayerOption::KeepOther) override {
-		Unexpected("...DelegateSimple::peerListShowBox");
-	}
-	void peerListHideLayer() override {
-		Unexpected("...DelegateSimple::peerListHideLayer");
-	}
 	std::shared_ptr<Main::SessionShow> peerListUiShow() override {
 		Unexpected("...DelegateSimple::peerListUiShow");
 	}
@@ -1023,10 +1014,6 @@ class PeerListContentDelegateShow : public PeerListContentDelegateSimple {
 public:
 	explicit PeerListContentDelegateShow(
 		std::shared_ptr<Main::SessionShow> show);
-	void peerListShowBox(
-		object_ptr<Ui::BoxContent> content,
-		Ui::LayerOptions options = Ui::LayerOption::KeepOther) override;
-	void peerListHideLayer() override;
 	std::shared_ptr<Main::SessionShow> peerListUiShow() override;
 
 private:
@@ -1062,10 +1049,6 @@ public:
 	bool peerListIsRowChecked(not_null<PeerListRow*> row) override;
 	int peerListSelectedRowsCount() override;
 	void peerListScrollToTop() override;
-	void peerListShowBox(
-		object_ptr<Ui::BoxContent> content,
-		Ui::LayerOptions options = Ui::LayerOption::KeepOther) override;
-	void peerListHideLayer() override;
 	std::shared_ptr<Main::SessionShow> peerListUiShow() override;
 
 	void setAddedTopScrollSkip(int skip);

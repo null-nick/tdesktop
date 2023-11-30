@@ -57,6 +57,9 @@ public:
 	}
 
 	TextForMimeData selectedText(TextSelection selection) const override;
+	SelectedQuote selectedQuote(TextSelection selection) const override;
+	TextSelection selectionFromQuote(
+		const SelectedQuote &quote) const override;
 
 	PhotoData *getPhoto() const override {
 		return _data;
@@ -159,6 +162,7 @@ private:
 		QPoint photoPosition) const;
 
 	[[nodiscard]] QSize photoSize() const;
+	[[nodiscard]] QRect enlargeRect() const;
 
 	void togglePollingStory(bool enabled) const;
 
@@ -174,6 +178,7 @@ private:
 	mutable uint32 _imageCacheForum : 1 = 0;
 	mutable uint32 _imageCacheBlurred : 1 = 0;
 	mutable uint32 _pollingStory : 1 = 0;
+	mutable uint32 _showEnlarge : 1 = 0;
 
 };
 

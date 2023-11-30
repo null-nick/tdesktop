@@ -55,6 +55,7 @@ void AddBubbleRow(
 struct BubbleRowState {
 	int counter = 0;
 	float64 ratio = 0.;
+	bool animateFromZero = false;
 	bool dynamic = false;
 };
 void AddBubbleRow(
@@ -62,10 +63,10 @@ void AddBubbleRow(
 	const style::PremiumBubble &st,
 	rpl::producer<> showFinishes,
 	rpl::producer<BubbleRowState> state,
-	int max,
 	bool premiumPossible,
 	Fn<QString(int)> text,
-	const style::icon *icon);
+	const style::icon *icon,
+	const style::margins &outerPadding);
 
 void AddLimitRow(
 	not_null<Ui::VerticalLayout*> parent,
@@ -83,17 +84,24 @@ void AddLimitRow(
 	float64 ratio = kLimitRowRatio);
 
 struct LimitRowLabels {
-	QString leftLabel;
-	QString leftCount;
-	QString rightLabel;
-	QString rightCount;
+	rpl::producer<QString> leftLabel;
+	rpl::producer<QString> leftCount;
+	rpl::producer<QString> rightLabel;
+	rpl::producer<QString> rightCount;
+};
+
+struct LimitRowState {
+	float64 ratio = 0.;
+	bool animateFromZero = false;
 	bool dynamic = false;
 };
+
 void AddLimitRow(
 	not_null<Ui::VerticalLayout*> parent,
 	const style::PremiumLimits &st,
 	LimitRowLabels labels,
-	rpl::producer<float64> ratio);
+	rpl::producer<LimitRowState> state,
+	const style::margins &padding);
 
 struct AccountsRowArgs final {
 	std::shared_ptr<Ui::RadiobuttonGroup> group;

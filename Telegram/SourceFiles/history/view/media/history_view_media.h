@@ -49,6 +49,7 @@ struct StateRequest;
 struct MediaSpoiler;
 class StickerPlayer;
 class Element;
+struct SelectedQuote;
 
 using PaintContext = Ui::ChatPaintContext;
 
@@ -86,10 +87,18 @@ public:
 
 	[[nodiscard]] virtual TextForMimeData selectedText(
 			TextSelection selection) const {
-		return TextForMimeData();
+		return {};
+	}
+	[[nodiscard]] virtual SelectedQuote selectedQuote(
+		TextSelection selection) const;
+	[[nodiscard]] virtual TextSelection selectionFromQuote(
+			const SelectedQuote &quote) const {
+		return {};
 	}
 
-	[[nodiscard]] virtual bool isDisplayed() const;
+	[[nodiscard]] virtual bool isDisplayed() const {
+		return true;
+	}
 	virtual void updateNeedBubbleState() {
 	}
 	[[nodiscard]] virtual bool hasTextForCopy() const {
@@ -99,6 +108,9 @@ public:
 		return true;
 	}
 	[[nodiscard]] virtual bool hideServiceText() const {
+		return false;
+	}
+	[[nodiscard]] virtual bool hideFromName() const {
 		return false;
 	}
 	[[nodiscard]] virtual bool allowsFastShare() const {
@@ -125,6 +137,8 @@ public:
 	// toggle selection instead of activating the pressed link
 	[[nodiscard]] virtual bool toggleSelectionByHandlerClick(
 		const ClickHandlerPtr &p) const = 0;
+	[[nodiscard]] virtual bool allowTextSelectionByHandler(
+		const ClickHandlerPtr &p) const;
 
 	[[nodiscard]] virtual TextSelection adjustSelection(
 			TextSelection selection,
@@ -321,6 +335,10 @@ public:
 	virtual void updateSharedContactUserId(UserId userId) {
 	}
 	virtual void parentTextUpdated() {
+	}
+
+	virtual bool consumeHorizontalScroll(QPoint position, int delta) {
+		return false;
 	}
 
 	virtual ~Media() = default;

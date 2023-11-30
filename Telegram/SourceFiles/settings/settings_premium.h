@@ -11,12 +11,17 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 enum class PremiumPreview;
 
+namespace style {
+struct RoundButton;
+} // namespace style
+
 namespace ChatHelpers {
 class Show;
 } // namespace ChatHelpers
 
 namespace Ui {
 class RpWidget;
+class RoundButton;
 class GradientButton;
 } // namespace Ui
 
@@ -51,6 +56,11 @@ void StartPremiumPayment(
 
 [[nodiscard]] QString LookupPremiumRef(PremiumPreview section);
 
+void ShowPremiumPromoToast(
+	std::shared_ptr<ChatHelpers::Show> show,
+	TextWithEntities textWithLink,
+	const QString &ref);
+
 struct SubscribeButtonArgs final {
 	Window::SessionController *controller = nullptr;
 	not_null<Ui::RpWidget*> parent;
@@ -60,6 +70,13 @@ struct SubscribeButtonArgs final {
 	Fn<QString()> computeBotUrl; // nullable
 	std::shared_ptr<ChatHelpers::Show> show;
 };
+
+
+[[nodiscard]] not_null<Ui::RoundButton*> CreateLockedButton(
+	not_null<QWidget*> parent,
+	rpl::producer<QString> text,
+	const style::RoundButton &st,
+	rpl::producer<bool> locked);
 
 [[nodiscard]] not_null<Ui::GradientButton*> CreateSubscribeButton(
 	SubscribeButtonArgs &&args);

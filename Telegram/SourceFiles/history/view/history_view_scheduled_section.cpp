@@ -55,6 +55,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_peer_values.h"
 #include "storage/storage_media_prepare.h"
 #include "storage/storage_account.h"
+#include "storage/localimageloader.h"
 #include "inline_bots/inline_bot_result.h"
 #include "lang/lang_keys.h"
 #include "styles/style_chat.h"
@@ -274,9 +275,20 @@ void ScheduledWidget::setupComposeControls() {
 		sendInlineResult(chosen.result, chosen.bot);
 	}, lifetime());
 
-	_composeControls->scrollRequests(
-	) | rpl::start_with_next([=](Data::MessagePosition pos) {
-		showAtPosition(pos);
+	_composeControls->jumpToItemRequests(
+	) | rpl::start_with_next([=](FullReplyTo to) {
+		if (const auto item = session().data().message(to.messageId)) {
+			if (item->isScheduled() && item->history() == _history) {
+				showAtPosition(item->position());
+			} else {
+				JumpToMessageClickHandler(
+					item,
+					{},
+					to.quote,
+					to.quoteOffset
+				)->onClick({});
+			}
+		}
 	}, lifetime());
 
 	_composeControls->scrollKeyEvents(
@@ -423,8 +435,7 @@ bool ScheduledWidget::confirmSendingFiles(
 		insertTextOnCancel));
 
 	//ActivateWindow(controller());
-	const auto shown = controller()->show(std::move(box));
-	shown->setCloseByOutsideClick(false);
+	controller()->show(std::move(box));
 
 	return true;
 }
@@ -585,11 +596,11 @@ void ScheduledWidget::send() {
 }
 
 void ScheduledWidget::send(Api::SendOptions options) {
-	const auto webPageId = _composeControls->webPageId();
+	const auto webPageDraft = _composeControls->webPageDraft();
 
 	auto message = Api::MessageToSend(prepareSendAction(options));
 	message.textWithTags = _composeControls->getTextWithAppliedMarkdown();
-	message.webPageId = webPageId;
+	message.webPage = webPageDraft;
 
 	session().api().sendMessage(std::move(message));
 
@@ -635,6 +646,7 @@ void ScheduledWidget::edit(
 		return;
 	}
 	const auto textWithTags = _composeControls->getTextWithAppliedMarkdown();
+	const auto webpage = _composeControls->webPageDraft();
 	const auto prepareFlags = Ui::ItemTextOptions(
 		_history,
 		session().user()).flags;
@@ -696,6 +708,7 @@ void ScheduledWidget::edit(
 	*saveEditMsgRequestId = Api::EditTextMessage(
 		item,
 		sending,
+		webpage,
 		options,
 		crl::guard(this, done),
 		crl::guard(this, fail));
@@ -856,7 +869,7 @@ void ScheduledWidget::showAtPosition(
 		FullMsgId originId) {
 	_inner->showAtPosition(
 		position,
-		anim::type::normal,
+		{},
 		_cornerButtons.doneJumpFrom(position.fullId, originId));
 }
 

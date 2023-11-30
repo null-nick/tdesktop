@@ -1,3 +1,89 @@
+4.11.8 (14.11.23)
+
+- Fix phrases on macOS by doing a clean rebuild.
+
+4.11.7 (13.11.23)
+
+- Fix sending media files with quote replies.
+- Fix quoted text highlighting in some cases.
+- Fix loading statistics for some channels.
+- Fix Ctrl+Shift+. shortcut on X11.
+- Fix a crash in statistics.
+
+4.11.6 (09.11.23)
+
+- Support multiple boosts and reassignment.
+- Improve giveaway creation flow.
+- Fix crash in topics creation.
+
+4.11.5 (06.11.23)
+
+- Giveaway phrases and sticker fixes.
+- Show quoted part in channel comments.
+- Show replies with icons and multiline preview.
+- Send correct replies in topics and channel comments.
+- In monochrome Windows tray icon use dot instead of counter.
+
+4.11.4 beta (06.11.23)
+
+- Show quoted part in channel comments.
+- Show replies with icons and multiline preview.
+- Send correct replies in topics and channel comments.
+- In monochrome Windows tray icon use dot instead of counter.
+
+4.11.3 (02.11.23)
+
+- Fix adding a link to media captions in scheduled / comments.
+- Fix crash in link preview options saving.
+- Fix possible crash in statistics.
+
+4.11.2 (01.11.23)
+
+- Highlight quoted parts in jump-to-message from replies.
+- Ctrl+Click on message field reply bar to jump to message.
+- Fix empty link preview displaying when generation failed.
+- Fix external replies in topic groups.
+- Allow enabling legacy tray icon on Windows.
+
+4.11.1 (29.10.23)
+
+- Fix crash in emoji status select.
+- Fix crash in language change.
+- Suggest shrinking only photos in webpage previews.
+- Fix opening video files in webpage previews in-app.
+- Fix sending links and markup with customized webpage previews.
+- Show "Saved Messages" as a first row when replying in another chat.
+- Fix selecting words by double-click with webpage previews.
+- Fix delayed webpage preview generation in preview options.
+- Add "show-peer-id-below-about" experimental option.
+
+4.11 (28.10.23)
+
+- View full statistics in your channels and group chats.
+- Choose which link preview in added to the message.
+- Choose if link preview is above or below the text.
+- Choose if link preview has large or small image.
+- Quote parts of text in replies.
+- Add quote formatting.
+- Reply in another chat.
+- Add nice looking code blocks with syntax highlighting.
+- Copy full code block by click on its header.
+- Send a highlighted code block using ```language syntax.
+- Change your name color in Chat Settings.
+- Customize quotes, link previews and replies to your messages.
+
+4.10.5 beta (23.10.23)
+
+- Fix crash in replies to messages with spoilers.
+- Enter boosts stats from three-dot menu.
+
+4.10.4 beta (21.10.23)
+
+- Statistics in channels and group chats.
+- Nice looking code blocks with syntax highlight.
+- Copy full code block by click on its header.
+- Send a highlighted code block using ```language syntax.
+
 4.10.3 (02.10.23)
 
 - Fix crash on external link opening. (Linux only)

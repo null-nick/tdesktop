@@ -14,6 +14,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/wrap/fade_wrap.h"
 #include "styles/style_layers.h"
 #include "styles/style_settings.h"
+#include "styles/style_premium.h"
 
 #include <QtCore/QFile>
 
@@ -90,6 +91,13 @@ QImage GenerateStarForLightTopBar(QRectF rect) {
 	return frame;
 }
 
+TopBarAbstract::TopBarAbstract(
+	QWidget *parent,
+	const style::PremiumCover &st)
+: RpWidget(parent)
+, _st(st) {
+}
+
 void TopBarAbstract::setRoundEdges(bool value) {
 	_roundEdges = value;
 	update();
@@ -112,8 +120,8 @@ void TopBarAbstract::paintEdges(QPainter &p, const QBrush &brush) const {
 }
 
 void TopBarAbstract::paintEdges(QPainter &p) const {
-	paintEdges(p, st::boxBg);
-	if (isDark()) {
+	paintEdges(p, st().bg);
+	if (isDark() && st().additionalShadowForDarkThemes) {
 		paintEdges(p, st::shadowFg);
 		paintEdges(p, st::shadowFg);
 	}
@@ -122,11 +130,11 @@ void TopBarAbstract::paintEdges(QPainter &p) const {
 QRectF TopBarAbstract::starRect(
 		float64 topProgress,
 		float64 sizeProgress) const {
-	const auto starSize = st::settingsPremiumStarSize * sizeProgress;
+	const auto starSize = _st.starSize * sizeProgress;
 	return QRectF(
 		QPointF(
 			(width() - starSize.width()) / 2,
-			st::settingsPremiumStarTopSkip * topProgress),
+			_st.starTopSkip * topProgress),
 		starSize);
 };
 
@@ -136,26 +144,25 @@ bool TopBarAbstract::isDark() const {
 
 void TopBarAbstract::computeIsDark() {
 	const auto contrast = CountContrast(
-		st::boxBg->c,
+		st().bg->c,
 		st::premiumButtonFg->c);
 	_isDark = (contrast > kMinAcceptableContrast);
 }
 
 TopBar::TopBar(
 	not_null<QWidget*> parent,
+	const style::PremiumCover &st,
 	Fn<QVariant()> clickContextOther,
 	rpl::producer<QString> title,
 	rpl::producer<TextWithEntities> about,
-	bool light)
-: TopBarAbstract(parent)
+	bool light,
+	bool optimizeMinistars)
+: TopBarAbstract(parent, st)
 , _light(light)
-, _titleFont(st::boxTitle.style.font)
-, _titlePadding(st::settingsPremiumTitlePadding)
-, _about(
-	this,
-	std::move(about),
-	_light ? st::settingsPremiumUserAbout : st::settingsPremiumAbout)
-, _ministars(this) {
+, _titleFont(st.titleFont)
+, _titlePadding(st.titlePadding)
+, _about(this, std::move(about), st.about)
+, _ministars(this, optimizeMinistars) {
 	std::move(
 		title
 	) | rpl::start_with_next([=](QString text) {
@@ -219,7 +226,7 @@ void TopBar::setTextPosition(int x, int y) {
 
 rpl::producer<int> TopBar::additionalHeight() const {
 	return _about->heightValue(
-	) | rpl::map([l = st::settingsPremiumAbout.style.lineHeight](int height) {
+	) | rpl::map([l = st().about.style.lineHeight](int height) {
 		return std::max(height - l * 2, 0);
 	});
 }

@@ -9,21 +9,15 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "api/api_updates.h"
 #include "api/api_views.h"
-#include "data/data_photo.h"
-#include "data/data_document.h"
 #include "data/data_document_media.h"
 #include "data/data_document_resolver.h"
 #include "data/data_forum_topic.h"
-#include "data/data_wall_paper.h"
 #include "data/data_web_page.h"
 #include "data/data_game.h"
 #include "data/data_peer_values.h"
-#include "data/data_drafts.h"
 #include "data/data_session.h"
 #include "data/data_changes.h"
-#include "data/data_media_types.h"
 #include "data/data_folder.h"
-#include "data/data_forum_topic.h"
 #include "data/data_channel.h"
 #include "data/data_chat.h"
 #include "data/data_user.h"
@@ -36,19 +30,12 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/widgets/buttons.h"
 #include "ui/widgets/shadow.h"
 #include "ui/widgets/dropdown_menu.h"
-#include "ui/image/image.h"
 #include "ui/focus_persister.h"
 #include "ui/resize_area.h"
-#include "ui/text/text_options.h"
-#include "ui/emoji_config.h"
-#include "ui/ui_utility.h"
-#include "window/section_memento.h"
-#include "window/section_widget.h"
 #include "window/window_connecting_widget.h"
 #include "window/window_top_bar_wrap.h"
 #include "window/notifications_manager.h"
 #include "window/window_slide_animation.h"
-#include "window/window_session_controller.h"
 #include "window/window_history_hider.h"
 #include "window/window_controller.h"
 #include "window/window_peer_menu.h"
@@ -56,27 +43,17 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "chat_helpers/tabbed_selector.h" // TabbedSelector::refreshStickers
 #include "chat_helpers/message_field.h"
 #include "info/info_memento.h"
-#include "info/info_controller.h"
 #include "apiwrap.h"
 #include "dialogs/dialogs_widget.h"
-#include "dialogs/dialogs_key.h"
-#include "history/history.h"
 #include "history/history_widget.h"
-#include "history/history_item.h"
 #include "history/history_item_helpers.h" // GetErrorTextForSending.
 #include "history/view/media/history_view_media.h"
 #include "history/view/history_view_service_message.h"
-#include "history/view/history_view_element.h"
 #include "lang/lang_keys.h"
 #include "lang/lang_cloud_manager.h"
-#include "boxes/add_contact_box.h"
-#include "mainwindow.h"
 #include "inline_bots/inline_bot_layout_item.h"
 #include "ui/boxes/confirm_box.h"
-#include "boxes/sticker_set_box.h"
 #include "boxes/peer_list_controllers.h"
-#include "boxes/download_path_box.h"
-#include "boxes/connection_box.h"
 #include "storage/storage_account.h"
 #include "main/main_domain.h"
 #include "media/audio/media_audio.h"
@@ -84,18 +61,13 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "media/player/media_player_widget.h"
 #include "media/player/media_player_dropdown.h"
 #include "media/player/media_player_instance.h"
-#include "media/player/media_player_float.h"
 #include "base/qthelp_regex.h"
-#include "base/qthelp_url.h"
-#include "base/flat_set.h"
 #include "mtproto/mtproto_dc_options.h"
-#include "core/file_utilities.h"
 #include "core/update_checker.h"
 #include "core/shortcuts.h"
 #include "core/application.h"
 #include "core/changelogs.h"
 #include "core/mime_type.h"
-#include "base/unixtime.h"
 #include "calls/calls_call.h"
 #include "calls/calls_instance.h"
 #include "calls/calls_top_bar.h"
@@ -108,12 +80,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "main/main_session_settings.h"
 #include "main/main_account.h"
 #include "support/support_helper.h"
-#include "storage/storage_facade.h"
-#include "storage/storage_shared_media.h"
 #include "storage/storage_user_photos.h"
 #include "styles/style_dialogs.h"
 #include "styles/style_chat.h"
-#include "styles/style_boxes.h"
 #include "styles/style_window.h"
 
 #include <QtCore/QCoreApplication>
@@ -596,16 +565,15 @@ bool MainWidget::shareUrl(
 	const auto cursor = MessageCursor{
 		int(url.size()) + 1,
 		int(url.size()) + 1 + int(text.size()),
-		QFIXED_MAX
+		Ui::kQFixedMax
 	};
 	const auto history = thread->owningHistory();
 	const auto topicRootId = thread->topicRootId();
 	history->setLocalDraft(std::make_unique<Data::Draft>(
 		textWithTags,
-		0, // replyTo
-		topicRootId,
+		FullReplyTo{ .topicRootId = topicRootId },
 		cursor,
-		Data::PreviewState::Allowed));
+		Data::WebPageDraft()));
 	history->clearLocalEditDraft(topicRootId);
 	history->session().changes().entryUpdated(
 		thread,
@@ -746,8 +714,8 @@ void MainWidget::sendBotCommand(Bot::SendCommandRequest request) {
 	}
 }
 
-void MainWidget::hideSingleUseKeyboard(PeerData *peer, MsgId replyTo) {
-	_history->hideSingleUseKeyboard(peer, replyTo);
+void MainWidget::hideSingleUseKeyboard(FullMsgId replyToId) {
+	_history->hideSingleUseKeyboard(replyToId);
 }
 
 void MainWidget::searchMessages(const QString &query, Dialogs::Key inChat) {
@@ -1412,7 +1380,11 @@ void MainWidget::showHistory(
 		&& way != Way::Forward) {
 		clearBotStartToken(_history->peer());
 	}
-	_history->showHistory(peerId, showAtMsgId);
+	_history->showHistory(
+		peerId,
+		showAtMsgId,
+		params.highlightPart,
+		params.highlightPartOffsetHint);
 	if (alreadyThatPeer && params.reapplyLocalDraft) {
 		_history->applyDraft(HistoryWidget::FieldHistoryAction::NewEntry);
 	}
@@ -1773,7 +1745,7 @@ void MainWidget::showNewSection(
 	} else {
 		_mainSection = std::move(newMainSection);
 		_history->finishAnimating();
-		_history->showHistory(0, 0);
+		_history->showHistory(PeerId(), MsgId());
 
 		if (const auto entry = _mainSection->activeChat(); entry.key) {
 			_controller->setActiveChatEntry(entry);

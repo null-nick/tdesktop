@@ -8,6 +8,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/view/history_view_replies_section.h"
 
 #include "history/view/controls/history_view_compose_controls.h"
+#include "history/view/controls/history_view_forward_panel.h"
+#include "history/view/controls/history_view_draft_options.h"
 #include "history/view/history_view_top_bar_widget.h"
 #include "history/view/history_view_list_widget.h"
 #include "history/view/history_view_schedule_box.h"
@@ -81,6 +83,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "storage/storage_media_prepare.h"
 #include "storage/storage_shared_media.h"
 #include "storage/storage_account.h"
+#include "storage/localimageloader.h"
 #include "inline_bots/inline_bot_result.h"
 #include "info/profile/info_profile_values.h"
 #include "lang/lang_keys.h"
@@ -126,9 +129,13 @@ rpl::producer<Ui::MessageBarContent> RootViewContent(
 RepliesMemento::RepliesMemento(
 	not_null<History*> history,
 	MsgId rootId,
-	MsgId highlightId)
+	MsgId highlightId,
+	const TextWithEntities &highlightPart,
+	int highlightPartOffsetHint)
 : _history(history)
 , _rootId(rootId)
+, _highlightPart(highlightPart)
+, _highlightPartOffsetHint(highlightPartOffsetHint)
 , _highlightId(highlightId) {
 	if (highlightId) {
 		_list.setAroundPosition({
@@ -318,10 +325,16 @@ RepliesWidget::RepliesWidget(
 	}, _inner->lifetime());
 
 	_inner->replyToMessageRequested(
-	) | rpl::filter([=] {
-		return !_joinGroup;
-	}) | rpl::start_with_next([=](auto fullId) {
-		replyToMessage(fullId);
+	) | rpl::start_with_next([=](auto fullId) {
+		const auto canSendReply = _topic
+			? Data::CanSendAnything(_topic)
+			: Data::CanSendAnything(_history->peer);
+		if (_joinGroup || !canSendReply) {
+			Controls::ShowReplyToChatBox(controller->uiShow(), { fullId });
+		} else {
+			replyToMessage(fullId);
+			_composeControls->focus();
+		}
 	}, _inner->lifetime());
 
 	_inner->showMessageRequested(
@@ -483,6 +496,7 @@ void RepliesWidget::setupTopicViewer() {
 	) | rpl::start_with_next([=](const Data::Session::IdChange &change) {
 		if (_rootId == change.oldId) {
 			_rootId = change.newId.msg;
+			_composeControls->updateTopicRootId(_rootId);
 			_sendAction = owner->sendActionManager().repliesPainter(
 				_history,
 				_rootId);
@@ -688,6 +702,8 @@ void RepliesWidget::setupComposeControls() {
 		return !canSendAnything
 			? (restriction
 				? restriction
+				: topicRestriction
+				? std::move(topicRestriction)
 				: tr::lng_group_not_accessible(tr::now))
 			: topicRestriction
 			? std::move(topicRestriction)
@@ -780,9 +796,16 @@ void RepliesWidget::setupComposeControls() {
 		sendInlineResult(chosen.result, chosen.bot, chosen.options, localId);
 	}, lifetime());
 
-	_composeControls->scrollRequests(
-	) | rpl::start_with_next([=](Data::MessagePosition pos) {
-		showAtPosition(pos);
+	_composeControls->jumpToItemRequests(
+	) | rpl::start_with_next([=](FullReplyTo to) {
+		if (const auto item = session().data().message(to.messageId)) {
+			JumpToMessageClickHandler(
+				item,
+				{},
+				to.quote,
+				to.quoteOffset
+			)->onClick({});
+		}
 	}, lifetime());
 
 	_composeControls->scrollKeyEvents(
@@ -959,8 +982,7 @@ bool RepliesWidget::confirmSendingFiles(
 		insertTextOnCancel));
 
 	//ActivateWindow(controller());
-	const auto shown = controller()->show(std::move(box));
-	shown->setCloseByOutsideClick(false);
+	controller()->show(std::move(box));
 
 	return true;
 }
@@ -1002,7 +1024,7 @@ void RepliesWidget::sendingFilesConfirmed(
 			album,
 			action);
 	}
-	if (_composeControls->replyingToMessage().msg == action.replyTo.msgId) {
+	if (_composeControls->replyingToMessage() == action.replyTo) {
 		_composeControls->cancelReplyMessage();
 		refreshTopBarActiveChat();
 	}
@@ -1123,9 +1145,9 @@ bool RepliesWidget::showSendingFilesError(
 }
 
 Api::SendAction RepliesWidget::prepareSendAction(
-		Api::SendOptions options) const {
+	Api::SendOptions options) const {
 	auto result = Api::SendAction(_history, options);
-	result.replyTo = { .msgId = replyToId(), .topicRootId = _rootId };
+	result.replyTo = replyTo();
 	result.options.sendAs = _composeControls->sendAsPeer();
 	return result;
 }
@@ -1164,11 +1186,9 @@ void RepliesWidget::send(Api::SendOptions options) {
 		_cornerButtons.clearReplyReturns();
 	}
 
-	const auto webPageId = _composeControls->webPageId();
-
 	auto message = Api::MessageToSend(prepareSendAction(options));
 	message.textWithTags = _composeControls->getTextWithAppliedMarkdown();
-	message.webPageId = webPageId;
+	message.webPage = _composeControls->webPageDraft();
 
 	const auto error = GetErrorTextForSending(
 		_history->peer,
@@ -1207,6 +1227,7 @@ void RepliesWidget::edit(
 		return;
 	}
 	const auto textWithTags = _composeControls->getTextWithAppliedMarkdown();
+	const auto webpage = _composeControls->webPageDraft();
 	const auto prepareFlags = Ui::ItemTextOptions(
 		_history,
 		session().user()).flags;
@@ -1268,6 +1289,7 @@ void RepliesWidget::edit(
 	*saveEditMsgRequestId = Api::EditTextMessage(
 		item,
 		sending,
+		webpage,
 		options,
 		crl::guard(this, done),
 		crl::guard(this, fail));
@@ -1444,26 +1466,27 @@ SendMenu::Type RepliesWidget::sendMenuType() const {
 		: SendMenu::Type::Scheduled;
 }
 
+FullReplyTo RepliesWidget::replyTo() const {
+	if (auto custom = _composeControls->replyingToMessage()) {
+		custom.topicRootId = _rootId;
+		return custom;
+	}
+	return FullReplyTo{
+		.messageId = FullMsgId(_history->peer->id, _rootId),
+		.topicRootId = _rootId,
+	};
+}
+
 void RepliesWidget::refreshTopBarActiveChat() {
 	using namespace Dialogs;
 	const auto state = EntryState{
 		.key = (_topic ? Key{ _topic } : Key{ _history }),
 		.section = EntryState::Section::Replies,
-		.rootId = _rootId,
-		.currentReplyToId = _composeControls->replyingToMessage().msg,
+		.currentReplyTo = replyTo(),
 	};
 	_topBar->setActiveChat(state, _sendAction.get());
 	_composeControls->setCurrentDialogsEntryState(state);
 	controller()->setCurrentDialogsEntryState(state);
-}
-
-MsgId RepliesWidget::replyToId() const {
-	const auto custom = _composeControls->replyingToMessage().msg;
-	return custom
-		? custom
-		: (_rootId == Data::ForumTopic::kGeneralId)
-		? MsgId()
-		: _rootId;
 }
 
 void RepliesWidget::refreshUnreadCountBadge(std::optional<int> count) {
@@ -1853,14 +1876,20 @@ void RepliesWidget::finishSending() {
 
 void RepliesWidget::showAtPosition(
 		Data::MessagePosition position,
+		FullMsgId originItemId) {
+	showAtPosition(position, originItemId, {});
+}
+
+void RepliesWidget::showAtPosition(
+		Data::MessagePosition position,
 		FullMsgId originItemId,
-		anim::type animated) {
+		const Window::SectionShow &params) {
 	_lastShownAt = position.fullId;
 	controller()->setActiveChatEntry(activeChat());
 	const auto ignore = (position.fullId.msg == _rootId);
 	_inner->showAtPosition(
 		position,
-		animated,
+		params,
 		_cornerButtons.doneJumpFrom(position.fullId, originItemId, ignore));
 }
 
@@ -1952,7 +1981,7 @@ bool RepliesWidget::showInternal(
 		if (logMemento->getHistory() == history()
 			&& logMemento->getRootId() == _rootId) {
 			restoreState(logMemento);
-			if (!logMemento->getHighlightId()) {
+			if (!logMemento->highlightId()) {
 				showAtPosition(Data::UnreadMessagePosition);
 			}
 			if (params.reapplyLocalDraft) {
@@ -2000,7 +2029,7 @@ bool RepliesWidget::showMessage(
 	}
 	const auto id = FullMsgId(_history->peer->id, messageId);
 	const auto message = _history->owner().message(id);
-	if (!message) {
+	if (!message || (!message->inThread(_rootId) && id.msg != _rootId)) {
 		return false;
 	}
 	const auto originMessage = [&]() -> HistoryItem* {
@@ -2016,13 +2045,13 @@ bool RepliesWidget::showMessage(
 		}
 		return nullptr;
 	}();
-	if (!originMessage) {
-		return false;
-	}
-	const auto originItemId = (_cornerButtons.replyReturn() != originMessage)
+	const auto currentReplyReturn = _cornerButtons.replyReturn();
+	const auto originItemId = !originMessage
+		? FullMsgId()
+		: (currentReplyReturn != originMessage)
 		? originMessage->fullId()
 		: FullMsgId();
-	showAtPosition(message->position(), originItemId);
+	showAtPosition(message->position(), originItemId, params);
 	return true;
 }
 
@@ -2052,8 +2081,8 @@ bool RepliesWidget::confirmSendingFiles(
 		insertTextOnCancel);
 }
 
-void RepliesWidget::replyToMessage(FullMsgId itemId) {
-	_composeControls->replyToMessage(itemId);
+void RepliesWidget::replyToMessage(FullReplyTo id) {
+	_composeControls->replyToMessage(std::move(id));
 	refreshTopBarActiveChat();
 }
 
@@ -2124,11 +2153,16 @@ void RepliesWidget::restoreState(not_null<RepliesMemento*> memento) {
 	}
 	_cornerButtons.setReplyReturns(memento->replyReturns());
 	_inner->restoreState(memento->list());
-	if (const auto highlight = memento->getHighlightId()) {
+	if (const auto highlight = memento->highlightId()) {
+		auto params = Window::SectionShow(
+			Window::SectionShow::Way::Forward,
+			anim::type::instant);
+		params.highlightPart = memento->highlightPart();
+		params.highlightPartOffsetHint = memento->highlightPartOffsetHint();
 		showAtPosition(Data::MessagePosition{
 			.fullId = FullMsgId(_history->peer->id, highlight),
 			.date = TimeId(0),
-		}, {}, anim::type::instant);
+		}, {}, params);
 	}
 }
 
@@ -2492,7 +2526,25 @@ void RepliesWidget::listUpdateDateLink(
 }
 
 bool RepliesWidget::listElementHideReply(not_null<const Element*> view) {
-	return (view->data()->replyToId() == _rootId);
+	if (const auto reply = view->data()->Get<HistoryMessageReply>()) {
+		const auto replyToPeerId = reply->externalPeerId()
+			? reply->externalPeerId()
+			: _history->peer->id;
+		if (reply->fields().manualQuote) {
+			return false;
+		} else if (replyToPeerId == _history->peer->id) {
+			return (reply->messageId() == _rootId);
+		} else if (_root) {
+			const auto forwarded = _root->Get<HistoryMessageForwarded>();
+			if (forwarded
+				&& forwarded->savedFromPeer
+				&& forwarded->savedFromPeer->id == replyToPeerId
+				&& forwarded->savedFromMsgId == reply->messageId()) {
+				return true;
+			}
+		}
+	}
+	return false;
 }
 
 bool RepliesWidget::listElementShownUnread(not_null<const Element*> view) {

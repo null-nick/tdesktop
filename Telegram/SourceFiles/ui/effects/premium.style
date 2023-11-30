@@ -26,6 +26,47 @@ PremiumBubble {
 	tailSize: size;
 	font: font;
 }
+PremiumCover {
+	bg: color;
+	starSize: size;
+	starTopSkip: pixels;
+	titlePadding: margins;
+	titleFont: font;
+	about: FlatLabel;
+	additionalShadowForDarkThemes: bool;
+}
+
+premiumAboutTextStyle: TextStyle(defaultTextStyle) {
+	font: font(12px);
+	linkUnderline: kLinkUnderlineAlways;
+	lineHeight: 18px;
+}
+defaultPremiumCover: PremiumCover {
+	bg: boxBg;
+	starSize: size(84px, 81px);
+	starTopSkip: 37px;
+	titlePadding: margins(0px, 18px, 0px, 11px);
+	titleFont: boxTitleFont;
+	about: FlatLabel(defaultFlatLabel) {
+		style: premiumAboutTextStyle;
+		palette: TextPalette(defaultTextPalette) {
+			linkFg: premiumButtonFg;
+		}
+		align: align(top);
+		textFg: premiumButtonFg;
+		minWidth: 190px;
+	}
+	additionalShadowForDarkThemes: true;
+}
+userPremiumCoverAbout: FlatLabel(boxDividerLabel) {
+	style: premiumAboutTextStyle;
+	minWidth: 315px;
+	maxHeight: 0px;
+	align: align(top);
+}
+userPremiumCover: PremiumCover(defaultPremiumCover) {
+	about: userPremiumCoverAbout;
+}
 
 defaultPremiumBoxLabel: FlatLabel(defaultFlatLabel) {
 	minWidth: 220px;
@@ -61,8 +102,6 @@ premiumPreviewAboutTitle: FlatLabel(defaultFlatLabel) {
 	align: align(top);
 	style: TextStyle(defaultTextStyle) {
 		font: font(17px semibold);
-		linkFont: font(17px semibold);
-		linkFontOver: font(17px semibold);
 	}
 }
 premiumPreviewAbout: FlatLabel(defaultFlatLabel) {
@@ -97,6 +136,7 @@ defaultPremiumBubble: PremiumBubble {
 	tailSize: size(21px, 7px);
 	font: font(19px);
 }
+premiumLineRadius: 5px;
 premiumLineTextSkip: 11px;
 premiumInfographicPadding: margins(0px, 10px, 0px, 15px);
 
@@ -184,8 +224,6 @@ premiumGiftTerms: FlatLabel(defaultFlatLabel) {
 	textFg: windowSubTextFg;
 	style: TextStyle(defaultTextStyle) {
 		font: font(11px);
-		linkFont: font(11px);
-		linkFontOver: font(11px underline);
 	}
 }
 premiumGiftBox: Box(premiumPreviewBox) {
@@ -195,6 +233,7 @@ premiumGiftBox: Box(premiumPreviewBox) {
 boostSkipTop: 37px;
 boostLimits: PremiumLimits(defaultPremiumLimits) {
 	gradientFromLeft: true;
+	nonPremiumBg: windowBgRipple;
 }
 boostBubble: PremiumBubble(defaultPremiumBubble) {
 	height: 32px;
@@ -208,16 +247,26 @@ boostTitleSkip: 32px;
 boostTitle: FlatLabel(defaultFlatLabel) {
 	minWidth: 40px;
 	textFg: windowBoldFg;
-	align: align(top);
 	maxHeight: 24px;
 	style: TextStyle(boxTextStyle) {
 		font: font(17px semibold);
-		linkFont: font(17px semibold);
-		linkFontOver: font(17px semibold);
 	}
+}
+boostTitleBadge: FlatLabel(defaultFlatLabel) {
+	margin: margins(4px, 2px, 4px, 2px);
+	style: semiboldTextStyle;
+	textFg: premiumButtonFg;
+}
+boostTitleBadgeSkip: 6px;
+boostCenteredTitle: FlatLabel(boostTitle) {
+	align: align(top);
 }
 boostTextSkip: 5px;
 boostText: FlatLabel(defaultFlatLabel) {
+	minWidth: 40px;
+	align: align(top);
+}
+boostReassignText: FlatLabel(defaultFlatLabel) {
 	minWidth: 40px;
 	align: align(top);
 }
@@ -234,11 +283,12 @@ boostBox: Box(premiumPreviewDoubledLimitsBox) {
 
 boostReplaceUserpicsPadding: margins(0px, 18px, 0px, 20px);
 boostReplaceUserpicsSkip: 42px;
+boostReplaceUserpicsShift: 24px;
 boostReplaceUserpic: UserpicButton(defaultUserpicButton) {
 	size: size(60px, 60px);
 	photoSize: 60px;
 }
-boostReplaceIcon: icon{{ "stories/boost_mini", windowBg }};
+boostReplaceIcon: icon{{ "stories/boost_mini", premiumButtonFg }};
 boostReplaceIconSkip: 3px;
 boostReplaceIconOutline: 2px;
 boostReplaceIconAdd: point(4px, 2px);

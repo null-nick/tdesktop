@@ -29,8 +29,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "main/main_account.h"
 #include "main/main_app_config.h"
 #include "main/main_session.h"
-#include "settings/settings_common.h"
-#include "settings/settings_premium.h"
+#include "settings/settings_common_session.h"
 #include "ui/abstract_button.h"
 #include "ui/basic_click_handlers.h"
 #include "ui/effects/gradient.h"
@@ -40,7 +39,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/layers/generic_box.h"
 #include "ui/text/format_values.h"
 #include "ui/text/text_utilities.h"
-#include "ui/text/text_utilities.h"
+#include "ui/toast/toast.h"
 #include "ui/widgets/checkbox.h" // Ui::RadiobuttonGroup.
 #include "ui/widgets/gradient_round_button.h"
 #include "ui/widgets/labels.h"
@@ -50,15 +49,16 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/wrap/vertical_layout.h"
 #include "ui/painter.h"
 #include "ui/power_saving.h"
+#include "ui/vertical_list.h"
 #include "window/window_controller.h"
 #include "window/window_session_controller.h"
+#include "window/window_session_controller_link_info.h"
 #include "base/unixtime.h"
 #include "apiwrap.h"
 #include "api/api_premium.h"
-#include "styles/style_boxes.h"
+#include "styles/style_chat_helpers.h"
 #include "styles/style_premium.h"
 #include "styles/style_info.h"
-#include "styles/style_intro.h"
 #include "styles/style_layers.h"
 #include "styles/style_settings.h"
 
@@ -104,8 +104,8 @@ namespace Gift {
 
 struct Data {
 	PeerId peerId;
-	int months;
-	bool me;
+	int months = 0;
+	bool me = false;
 
 	explicit operator bool() const {
 		return peerId != 0;
@@ -176,6 +176,7 @@ using Order = std::vector<QString>;
 
 [[nodiscard]] Order FallbackOrder() {
 	return Order{
+		u"wallpapers"_q,
 		u"stories"_q,
 		u"double_limits"_q,
 		u"more_upload"_q,
@@ -196,13 +197,22 @@ using Order = std::vector<QString>;
 [[nodiscard]] base::flat_map<QString, Entry> EntryMap() {
 	return base::flat_map<QString, Entry>{
 		{
+			u"wallpapers"_q,
+			Entry{
+				&st::settingsPremiumIconWallpapers,
+				tr::lng_premium_summary_subtitle_wallpapers(),
+				tr::lng_premium_summary_about_wallpapers(),
+				PremiumPreview::Wallpapers,
+				true,
+			},
+		},
+		{
 			u"stories"_q,
 			Entry{
 				&st::settingsPremiumIconStories,
 				tr::lng_premium_summary_subtitle_stories(),
 				tr::lng_premium_summary_about_stories(),
 				PremiumPreview::Stories,
-				true,
 			},
 		},
 		{
@@ -518,11 +528,11 @@ TopBarUser::TopBarUser(
 	not_null<Window::SessionController*> controller,
 	not_null<PeerData*> peer,
 	rpl::producer<> showFinished)
-: TopBarAbstract(parent)
+: TopBarAbstract(parent, st::userPremiumCover)
 , _content(this)
 , _title(_content, st::settingsPremiumUserTitle)
-, _about(_content, st::settingsPremiumUserAbout)
-, _ministars(_content)
+, _about(_content, st::userPremiumCover.about)
+, _ministars(_content, true)
 , _smallTop({
 	.widget = object_ptr<Ui::RpWidget>(this),
 	.text = Ui::Text::String(
@@ -871,7 +881,7 @@ void Premium::setupSubscriptionOptions(
 			object_ptr<Ui::VerticalLayout>(container)));
 	const auto content = options->entity();
 
-	AddSkip(content, st::settingsPremiumOptionsPadding.top());
+	Ui::AddSkip(content, st::settingsPremiumOptionsPadding.top());
 
 	const auto apiPremium = &_controller->session().api().premium();
 	Ui::Premium::AddGiftOptions(
@@ -881,13 +891,13 @@ void Premium::setupSubscriptionOptions(
 		st::premiumSubscriptionOption,
 		true);
 
-	AddSkip(content, st::settingsPremiumOptionsPadding.bottom());
-	AddDivider(content);
+	Ui::AddSkip(content, st::settingsPremiumOptionsPadding.bottom());
+	Ui::AddDivider(content);
 
 	const auto lastSkip = TopTransitionSkip() * (isEmojiStatus ? 1 : 2);
 
-	AddSkip(content, lastSkip - st::settingsSectionSkip);
-	AddSkip(skip->entity(), lastSkip);
+	Ui::AddSkip(content, lastSkip - st::defaultVerticalListSkip);
+	Ui::AddSkip(skip->entity(), lastSkip);
 
 	auto toggleOn = rpl::combine(
 		Data::AmPremiumValue(&_controller->session()),
@@ -1088,11 +1098,11 @@ void Premium::setupContent() {
 			{ .icon = icons[i], .backgroundBrush = brush });
 	}
 
-	AddSkip(content, descriptionPadding.bottom());
+	Ui::AddSkip(content, descriptionPadding.bottom());
 #if 0
-	AddSkip(content);
-	AddDivider(content);
-	AddSkip(content);
+	Ui::AddSkip(content);
+	Ui::AddDivider(content);
+	Ui::AddSkip(content);
 
 	content->add(
 		object_ptr<Ui::FlatLabel>(
@@ -1100,14 +1110,16 @@ void Premium::setupContent() {
 			tr::lng_premium_summary_bottom_subtitle(
 			) | rpl::map(Ui::Text::Bold),
 			stLabel),
-		st::settingsSubsectionTitlePadding);
+		st::defaultSubsectionTitlePadding);
 	content->add(
 		object_ptr<Ui::FlatLabel>(
 			content,
 			tr::lng_premium_summary_bottom_about(Ui::Text::RichLangValue),
 			st::aboutLabel),
 		st::boxRowPadding);
-	AddSkip(content, stDefault.padding.top() + stDefault.padding.bottom());
+	Ui::AddSkip(
+		content,
+		stDefault.padding.top() + stDefault.padding.bottom());
 #endif
 
 	Ui::ResizeFitChild(this, content);
@@ -1173,6 +1185,7 @@ QPointer<Ui::RpWidget> Premium::createPinnedToTop(
 		};
 		return Ui::CreateChild<Ui::Premium::TopBar>(
 			parent.get(),
+			st::defaultPremiumCover,
 			clickContextOther,
 			std::move(title),
 			std::move(about));
@@ -1371,6 +1384,24 @@ QPointer<Ui::RpWidget> Premium::createPinnedToBottom(
 
 } // namespace
 
+template <>
+struct SectionFactory<Premium> : AbstractSectionFactory {
+	object_ptr<AbstractSection> create(
+		not_null<QWidget*> parent,
+		not_null<Window::SessionController*> controller
+	) const final override {
+		return object_ptr<Premium>(parent, controller);
+	}
+	bool hasCustomTopBar() const final override {
+		return true;
+	}
+
+	[[nodiscard]] static const std::shared_ptr<SectionFactory> &Instance() {
+		static const auto result = std::make_shared<SectionFactory>();
+		return result;
+	}
+};
+
 Type PremiumId() {
 	return Premium::Id();
 }
@@ -1427,7 +1458,7 @@ void StartPremiumPayment(
 		"premium_invoice_slug",
 		QString());
 	if (!username.isEmpty()) {
-		controller->showPeerByLink(Window::SessionNavigation::PeerByLinkInfo{
+		controller->showPeerByLink(Window::PeerByLinkInfo{
 			.usernameOrId = username,
 			.resolveType = Window::ResolveType::BotStart,
 			.startToken = ref,
@@ -1445,6 +1476,90 @@ QString LookupPremiumRef(PremiumPreview section) {
 		}
 	}
 	return QString();
+}
+
+void ShowPremiumPromoToast(
+		std::shared_ptr<ChatHelpers::Show> show,
+		TextWithEntities textWithLink,
+		const QString &ref) {
+	using WeakToast = base::weak_ptr<Ui::Toast::Instance>;
+	const auto toast = std::make_shared<WeakToast>();
+	(*toast) = show->showToast({
+		.text = std::move(textWithLink),
+		.st = &st::defaultMultilineToast,
+		.duration = Ui::Toast::kDefaultDuration * 2,
+		.multiline = true,
+		.filter = crl::guard(&show->session(), [=](
+				const ClickHandlerPtr &,
+				Qt::MouseButton button) {
+			if (button == Qt::LeftButton) {
+				if (const auto strong = toast->get()) {
+					strong->hideAnimated();
+					(*toast) = nullptr;
+					if (const auto controller = show->resolveWindow(
+							ChatHelpers::WindowUsage::PremiumPromo)) {
+						Settings::ShowPremium(controller, ref);
+					}
+					return true;
+				}
+			}
+			return false;
+		}),
+	});
+}
+
+not_null<Ui::RoundButton*> CreateLockedButton(
+		not_null<QWidget*> parent,
+		rpl::producer<QString> text,
+		const style::RoundButton &st,
+		rpl::producer<bool> locked) {
+	const auto result = Ui::CreateChild<Ui::RoundButton>(
+		parent.get(),
+		rpl::single(QString()),
+		st);
+
+	const auto labelSt = result->lifetime().make_state<style::FlatLabel>(
+		st::defaultFlatLabel);
+	labelSt->style.font = st.font;
+	labelSt->textFg = st.textFg;
+
+	const auto label = Ui::CreateChild<Ui::FlatLabel>(
+		result,
+		std::move(text),
+		*labelSt);
+	label->setAttribute(Qt::WA_TransparentForMouseEvents);
+
+	const auto icon = Ui::CreateChild<Ui::RpWidget>(result);
+	icon->setAttribute(Qt::WA_TransparentForMouseEvents);
+	icon->resize(st::stickersPremiumLock.size());
+	icon->paintRequest() | rpl::start_with_next([=] {
+		auto p = QPainter(icon);
+		st::stickersPremiumLock.paint(p, 0, 0, icon->width());
+	}, icon->lifetime());
+
+	rpl::combine(
+		result->widthValue(),
+		label->widthValue(),
+		std::move(locked)
+	) | rpl::start_with_next([=](int outer, int inner, bool locked) {
+		if (locked) {
+			icon->show();
+			inner += icon->width();
+			label->move(
+				(outer - inner) / 2 + icon->width(),
+				st::similarChannelsLock.textTop);
+			icon->move(
+				(outer - inner) / 2,
+				st::similarChannelsLock.textTop);
+		} else {
+			icon->hide();
+			label->move(
+				(outer - inner) / 2,
+				st::similarChannelsLock.textTop);
+		}
+	}, result->lifetime());
+
+	return result;
 }
 
 not_null<Ui::GradientButton*> CreateSubscribeButton(
@@ -1555,6 +1670,8 @@ not_null<Ui::GradientButton*> CreateSubscribeButton(
 			return PremiumPreview::AnimatedUserpics;
 		} else if (s == u"translations"_q) {
 			return PremiumPreview::RealTimeTranslation;
+		} else if (s == u"wallpapers"_q) {
+			return PremiumPreview::Wallpapers;
 		}
 		return PremiumPreview::kCount;
 	}) | ranges::views::filter([](PremiumPreview type) {

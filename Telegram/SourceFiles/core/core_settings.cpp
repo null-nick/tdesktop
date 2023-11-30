@@ -7,18 +7,17 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "core/core_settings.h"
 
-#include "boxes/send_files_box.h"
-#include "history/view/history_view_quick_action.h"
-#include "ui/widgets/fields/input_field.h"
-#include "storage/serialize_common.h"
-#include "window/section_widget.h"
 #include "base/platform/base_platform_info.h"
-#include "webrtc/webrtc_create_adm.h"
-#include "media/player/media_player_instance.h"
-#include "media/media_common.h"
-#include "ui/gl/gl_detection.h"
 #include "calls/group/calls_group_common.h"
+#include "history/view/history_view_quick_action.h"
+#include "lang/lang_keys.h"
+#include "platform/platform_notifications_manager.h"
 #include "spellcheck/spellcheck_types.h"
+#include "storage/serialize_common.h"
+#include "ui/gl/gl_detection.h"
+#include "ui/widgets/fields/input_field.h"
+#include "webrtc/webrtc_create_adm.h"
+#include "window/section_widget.h"
 
 namespace Core {
 namespace {
@@ -344,6 +343,8 @@ QByteArray Settings::serialize() const {
 		for (const auto &id : _recentEmojiSkip) {
 			stream << id;
 		}
+		stream
+			<< qint32(_trayIconMonochrome.current() ? 1 : 0);
 	}
 	return result;
 }
@@ -451,6 +452,7 @@ void Settings::addFromSerialized(const QByteArray &serialized) {
 	quint64 macRoundIconDigest = _macRoundIconDigest.value_or(0);
 	qint32 storiesClickTooltipHidden = _storiesClickTooltipHidden.current() ? 1 : 0;
 	base::flat_set<QString> recentEmojiSkip;
+	qint32 trayIconMonochrome = (_trayIconMonochrome.current() ? 1 : 0);
 
 	stream >> themesAccentColors;
 	if (!stream.atEnd()) {
@@ -701,6 +703,12 @@ void Settings::addFromSerialized(const QByteArray &serialized) {
 			}
 		}
 	}
+	if (!stream.atEnd()) {
+		stream >> trayIconMonochrome;
+	} else {
+		// Let existing clients use the old value.
+		trayIconMonochrome = 0;
+	}
 	if (stream.status() != QDataStream::Ok) {
 		LOG(("App Error: "
 			"Bad data for Core::Settings::constructFromSerialized()"));
@@ -894,6 +902,7 @@ void Settings::addFromSerialized(const QByteArray &serialized) {
 	_macRoundIconDigest = macRoundIconDigest ? macRoundIconDigest : std::optional<uint64>();
 	_storiesClickTooltipHidden = (storiesClickTooltipHidden == 1);
 	_recentEmojiSkip = std::move(recentEmojiSkip);
+	_trayIconMonochrome = (trayIconMonochrome == 1);
 }
 
 QString Settings::getSoundPath(const QString &key) const {
@@ -1294,6 +1303,17 @@ auto Settings::DeserializePlaybackSpeed(qint32 speed) -> PlaybackSpeed {
 		enabled = false;
 	}
 	return validate(std::clamp(speed / 100., kSpeedMin, kSpeedMax));
+}
+
+bool Settings::nativeNotifications() const {
+	return _nativeNotifications.value_or(
+		Platform::Notifications::ByDefault());
+}
+
+void Settings::setNativeNotifications(bool value) {
+	_nativeNotifications = (value == Platform::Notifications::ByDefault())
+		? std::nullopt
+		: std::make_optional(value);
 }
 
 void Settings::setTranslateButtonEnabled(bool value) {

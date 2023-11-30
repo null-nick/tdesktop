@@ -46,6 +46,9 @@ public:
 	bool hasTextForCopy() const override;
 
 	TextForMimeData selectedText(TextSelection selection) const override;
+	SelectedQuote selectedQuote(TextSelection selection) const override;
+	TextSelection selectionFromQuote(
+		const SelectedQuote &quote) const override;
 
 	bool uploading() const override;
 

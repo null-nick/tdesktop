@@ -23,6 +23,7 @@ set(style_files
     calls/calls.style
     export/view/export.style
     info/info.style
+    info/boosts/giveaway/giveaway.style
     info/userpic/info_userpic_builder.style
     intro/intro.style
     media/player/media_player.style
@@ -34,6 +35,7 @@ set(style_files
     overview/overview.style
     window/window.style
     editor/editor.style
+    statistics/statistics.style
 )
 
 set(dependent_style_files
@@ -68,6 +70,8 @@ PRIVATE
     countries/countries_instance.cpp
     countries/countries_instance.h
 
+    data/data_statistics_chart.cpp
+    data/data_statistics_chart.h
     data/data_subscription_option.h
 
     dialogs/dialogs_three_state_icon.h
@@ -105,6 +109,16 @@ PRIVATE
     info/userpic/info_userpic_color_circle_button.h
     info/userpic/info_userpic_emoji_builder_layer.cpp
     info/userpic/info_userpic_emoji_builder_layer.h
+
+    info/boosts/giveaway/boost_badge.cpp
+    info/boosts/giveaway/boost_badge.h
+    info/boosts/giveaway/giveaway_type_row.cpp
+    info/boosts/giveaway/giveaway_type_row.h
+    info/boosts/giveaway/select_countries_box.cpp
+    info/boosts/giveaway/select_countries_box.h
+
+    intro/intro_code_input.cpp
+    intro/intro_code_input.h
 
     layout/abstract_layout_item.cpp
     layout/abstract_layout_item.h
@@ -157,6 +171,45 @@ PRIVATE
     platform/mac/file_bookmark_mac.h
     platform/mac/file_bookmark_mac.mm
     platform/platform_file_bookmark.h
+
+    settings/settings_common.cpp
+    settings/settings_common.h
+
+    statistics/chart_lines_filter_controller.cpp
+    statistics/chart_lines_filter_controller.h
+    statistics/chart_rulers_data.cpp
+    statistics/chart_rulers_data.h
+    statistics/chart_widget.cpp
+    statistics/chart_widget.h
+    statistics/segment_tree.cpp
+    statistics/segment_tree.h
+    statistics/statistics_common.h
+    statistics/statistics_data_deserialize.cpp
+    statistics/statistics_data_deserialize.h
+    statistics/statistics_format_values.cpp
+    statistics/statistics_format_values.h
+    statistics/view/abstract_chart_view.cpp
+    statistics/view/abstract_chart_view.h
+    statistics/view/bar_chart_view.cpp
+    statistics/view/bar_chart_view.h
+    statistics/view/chart_rulers_view.cpp
+    statistics/view/chart_rulers_view.h
+    statistics/view/chart_view_factory.cpp
+    statistics/view/chart_view_factory.h
+    statistics/view/linear_chart_view.cpp
+    statistics/view/linear_chart_view.h
+    statistics/view/stack_chart_common.cpp
+    statistics/view/stack_chart_common.h
+    statistics/view/stack_linear_chart_common.cpp
+    statistics/view/stack_linear_chart_common.h
+    statistics/view/stack_linear_chart_view.cpp
+    statistics/view/stack_linear_chart_view.h
+    statistics/widgets/chart_header_widget.cpp
+    statistics/widgets/chart_header_widget.h
+    statistics/widgets/chart_lines_filter_widget.cpp
+    statistics/widgets/chart_lines_filter_widget.h
+    statistics/widgets/point_details_widget.cpp
+    statistics/widgets/point_details_widget.h
 
     ui/boxes/auto_delete_settings.cpp
     ui/boxes/auto_delete_settings.h
@@ -285,6 +338,8 @@ PRIVATE
     ui/effects/round_checkbox.h
     ui/effects/scroll_content_shadow.cpp
     ui/effects/scroll_content_shadow.h
+    ui/effects/shake_animation.cpp
+    ui/effects/shake_animation.h
     ui/effects/snowflakes.cpp
     ui/effects/snowflakes.h
     ui/effects/toggle_arrow.cpp
@@ -324,6 +379,8 @@ PRIVATE
     ui/grouped_layout.h
     ui/power_saving.cpp
     ui/power_saving.h
+    ui/vertical_list.cpp
+    ui/vertical_list.h
     ui/unread_badge_paint.cpp
     ui/unread_badge_paint.h
     ui/userpic_view.cpp

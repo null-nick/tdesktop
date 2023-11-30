@@ -11,6 +11,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "base/flat_set.h"
 #include "base/weak_ptr.h"
 #include "base/timer.h"
+#include "mtproto/sender.h"
 
 class History;
 
@@ -218,9 +219,7 @@ public:
 	Main::Session &session() const override;
 	void rowClicked(not_null<PeerListRow*> row) override;
 
-	bool respectSavedMessagesChat() const override {
-		return true;
-	}
+	QString savedMessagesChatStatus() const override;
 
 protected:
 	void prepareViewHook() override;

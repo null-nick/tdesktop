@@ -8,19 +8,16 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #pragma once
 
 #include "storage/storage_databases.h"
-#include "dialogs/dialogs_key.h"
-#include "dialogs/dialogs_indexed_list.h"
 #include "dialogs/dialogs_main_list.h"
 #include "data/data_groups.h"
 #include "data/data_cloud_file.h"
 #include "history/history_location_manager.h"
 #include "base/timer.h"
-#include "base/flags.h"
 
 class Image;
 class HistoryItem;
 struct WebPageCollage;
-enum class WebPageType;
+enum class WebPageType : uint8;
 enum class NewMessageType;
 
 namespace HistoryView {
@@ -562,6 +559,7 @@ public:
 		WebPageCollage &&collage,
 		int duration,
 		const QString &author,
+		bool hasLargeMedia,
 		TimeId pendingTill);
 
 	[[nodiscard]] not_null<GameData*> game(GameId id);
@@ -704,7 +702,8 @@ public:
 
 	void serviceNotification(
 		const TextWithEntities &message,
-		const MTPMessageMedia &media = MTP_messageMediaEmpty());
+		const MTPMessageMedia &media = MTP_messageMediaEmpty(),
+		bool invertMedia = false);
 
 	void setMimeForwardIds(MessageIdsList &&list);
 	MessageIdsList takeMimeForwardIds();
@@ -724,6 +723,14 @@ public:
 	};
 	void webViewResultSent(WebViewResultSent &&sent);
 	[[nodiscard]] rpl::producer<WebViewResultSent> webViewResultSent() const;
+
+	void saveViewAsMessages(not_null<Forum*> forum, bool viewAsMessages);
+
+	[[nodiscard]] auto peerDecorationsUpdated() const
+		-> rpl::producer<not_null<PeerData*>>;
+
+	void applyStatsDcId(not_null<ChannelData*>, MTP::DcId);
+	[[nodiscard]] MTP::DcId statsDcId(not_null<ChannelData*>);
 
 	void clearLocalStorage();
 
@@ -824,6 +831,7 @@ private:
 		WebPageCollage &&collage,
 		int duration,
 		const QString &author,
+		bool hasLargeMedia,
 		TimeId pendingTill);
 
 	void gameApplyFields(
@@ -846,7 +854,8 @@ private:
 	void insertCheckedServiceNotification(
 		const TextWithEntities &message,
 		const MTPMessageMedia &media,
-		TimeId date);
+		TimeId date,
+		bool invertMedia);
 
 	void setWallpapers(const QVector<MTPWallPaper> &data, uint64 hash);
 	void highlightProcessDone(uint64 processId);
@@ -1007,7 +1016,14 @@ private:
 	base::flat_map<not_null<UserData*>, TimeId> _watchingForOffline;
 	base::Timer _watchForOfflineTimer;
 
+	base::flat_map<not_null<ChannelData*>, MTP::DcId> _channelStatsDcIds;
+
 	rpl::event_stream<WebViewResultSent> _webViewResultSent;
+
+	rpl::event_stream<not_null<PeerData*>> _peerDecorationsUpdated;
+	base::flat_map<
+		not_null<ChannelData*>,
+		mtpRequestId> _viewAsMessagesRequests;
 
 	Groups _groups;
 	const std::unique_ptr<ChatFilters> _chatsFilters;

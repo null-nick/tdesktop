@@ -1991,6 +1991,19 @@ void Updates::feedUpdate(const MTPUpdate &update) {
 		}
 	} break;
 
+	case mtpc_updatePeerWallpaper: {
+		const auto &d = update.c_updatePeerWallpaper();
+		if (const auto peer = session().data().peerLoaded(peerFromMTP(d.vpeer()))) {
+			if (const auto paper = d.vwallpaper()) {
+				peer->setWallPaper(
+					Data::WallPaper::Create(&session(), *paper),
+					d.is_wallpaper_overridden());
+			} else {
+				peer->setWallPaper({});
+			}
+		}
+	} break;
+
 	case mtpc_updateBotCommands: {
 		const auto &d = update.c_updateBotCommands();
 		if (const auto peer = session().data().peerLoaded(peerFromMTP(d.vpeer()))) {
@@ -2071,7 +2084,10 @@ void Updates::feedUpdate(const MTPUpdate &update) {
 				windows.front()->window().show(Ui::MakeInformBox(text));
 			}
 		} else {
-			session().data().serviceNotification(text, d.vmedia());
+			session().data().serviceNotification(
+				text,
+				d.vmedia(),
+				d.is_invert_media());
 			session().api().authorizations().reload();
 		}
 	} break;
@@ -2320,6 +2336,14 @@ void Updates::feedUpdate(const MTPUpdate &update) {
 					forum->reloadTopics();
 				}
 			}
+		}
+	} break;
+
+	case mtpc_updateChannelViewForumAsMessages: {
+		const auto &d = update.c_updateChannelViewForumAsMessages();
+		const auto id = ChannelId(d.vchannel_id());
+		if (const auto channel = session().data().channelLoaded(id)) {
+			channel->setViewAsMessagesFlag(mtpIsTrue(d.venabled()));
 		}
 	} break;
 

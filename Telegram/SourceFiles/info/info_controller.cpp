@@ -43,6 +43,9 @@ Key::Key(Downloads::Tag downloads) : _value(downloads) {
 Key::Key(Stories::Tag stories) : _value(stories) {
 }
 
+Key::Key(Statistics::Tag statistics) : _value(statistics) {
+}
+
 Key::Key(not_null<PollData*> poll, FullMsgId contextId)
 : _value(PollKey{ poll, contextId }) {
 }
@@ -87,6 +90,27 @@ Stories::Tab Key::storiesTab() const {
 		return tag->tab;
 	}
 	return Stories::Tab();
+}
+
+PeerData *Key::statisticsPeer() const {
+	if (const auto tag = std::get_if<Statistics::Tag>(&_value)) {
+		return tag->peer;
+	}
+	return nullptr;
+}
+
+FullMsgId Key::statisticsContextId() const {
+	if (const auto tag = std::get_if<Statistics::Tag>(&_value)) {
+		return tag->contextId;
+	}
+	return {};
+}
+
+FullStoryId Key::statisticsStoryId() const {
+	if (const auto tag = std::get_if<Statistics::Tag>(&_value)) {
+		return tag->storyId;
+	}
+	return {};
 }
 
 PollData *Key::poll() const {
@@ -267,7 +291,8 @@ bool Controller::validateMementoPeer(
 	return memento->peer() == peer()
 		&& memento->migratedPeerId() == migratedPeerId()
 		&& memento->settingsSelf() == settingsSelf()
-		&& memento->storiesPeer() == storiesPeer();
+		&& memento->storiesPeer() == storiesPeer()
+		&& memento->statisticsPeer() == statisticsPeer();
 }
 
 void Controller::setSection(not_null<ContentMemento*> memento) {

@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #pragma once
 
 #include "base/unique_qptr.h"
+#include "history/view/history_view_element.h"
 
 namespace Data {
 struct ReactionId;
@@ -47,6 +48,7 @@ struct ContextMenuRequest {
 	HistoryItem *item = nullptr;
 	SelectedItems selectedItems;
 	TextForMimeData selectedText;
+	SelectedQuote quote;
 	bool overSelection = false;
 	PointState pointState = PointState();
 };

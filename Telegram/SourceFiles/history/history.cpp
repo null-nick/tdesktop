@@ -177,8 +177,7 @@ void History::takeLocalDraft(not_null<History*> from) {
 		&& !_drafts.contains(Data::DraftKey::Local(topicRootId))) {
 		// Edit and reply to drafts can't migrate.
 		// Cloud drafts do not migrate automatically.
-		draft->msgId = 0;
-
+		draft->reply = FullReplyTo();
 		setLocalDraft(std::move(draft));
 	}
 	from->clearLocalDraft(topicRootId);
@@ -194,6 +193,7 @@ void History::createLocalDraftFromCloud(MsgId topicRootId) {
 		return;
 	}
 
+	draft->reply.topicRootId = topicRootId;
 	auto existing = localDraft(topicRootId);
 	if (Data::DraftIsNull(existing)
 		|| !existing->date
@@ -201,17 +201,15 @@ void History::createLocalDraftFromCloud(MsgId topicRootId) {
 		if (!existing) {
 			setLocalDraft(std::make_unique<Data::Draft>(
 				draft->textWithTags,
-				draft->msgId,
-				topicRootId,
+				draft->reply,
 				draft->cursor,
-				draft->previewState));
+				draft->webpage));
 			existing = localDraft(topicRootId);
 		} else if (existing != draft) {
 			existing->textWithTags = draft->textWithTags;
-			existing->msgId = draft->msgId;
-			existing->topicRootId = draft->topicRootId;
+			existing->reply = draft->reply;
 			existing->cursor = draft->cursor;
-			existing->previewState = draft->previewState;
+			existing->webpage = draft->webpage;
 		}
 		existing->date = draft->date;
 	}
@@ -277,28 +275,29 @@ Data::Draft *History::createCloudDraft(
 	if (Data::DraftIsNull(fromDraft)) {
 		setCloudDraft(std::make_unique<Data::Draft>(
 			TextWithTags(),
-			0,
-			topicRootId,
+			FullReplyTo{ .topicRootId = topicRootId },
 			MessageCursor(),
-			Data::PreviewState::Allowed));
+			Data::WebPageDraft()));
 		cloudDraft(topicRootId)->date = TimeId(0);
 	} else {
 		auto existing = cloudDraft(topicRootId);
 		if (!existing) {
+			auto reply = fromDraft->reply;
+			reply.topicRootId = topicRootId;
 			setCloudDraft(std::make_unique<Data::Draft>(
 				fromDraft->textWithTags,
-				fromDraft->msgId,
-				topicRootId,
+				reply,
 				fromDraft->cursor,
-				fromDraft->previewState));
+				fromDraft->webpage));
 			existing = cloudDraft(topicRootId);
 		} else if (existing != fromDraft) {
 			existing->textWithTags = fromDraft->textWithTags;
-			existing->msgId = fromDraft->msgId;
+			existing->reply = fromDraft->reply;
 			existing->cursor = fromDraft->cursor;
-			existing->previewState = fromDraft->previewState;
+			existing->webpage = fromDraft->webpage;
 		}
 		existing->date = base::unixtime::now();
+		existing->reply.topicRootId = topicRootId;
 	}
 
 	if (const auto thread = threadFor(topicRootId)) {
@@ -1127,8 +1126,8 @@ void History::applyServiceChanges(
 	}, [&](const MTPDmessageActionPinMessage &data) {
 		if (replyTo) {
 			replyTo->match([&](const MTPDmessageReplyHeader &data) {
-				const auto id = data.vreply_to_msg_id().v;
-				if (item) {
+				const auto id = data.vreply_to_msg_id().value_or_empty();
+				if (id && item) {
 					session().storage().add(Storage::SharedMediaAddSlice(
 						peer->id,
 						MsgId(0),
@@ -1193,6 +1192,12 @@ void History::applyServiceChanges(
 		}
 	}, [&](const MTPDmessageActionSetChatTheme &data) {
 		peer->setThemeEmoji(qs(data.vemoticon()));
+	}, [&](const MTPDmessageActionSetChatWallPaper &data) {
+		if (item->out() || data.is_for_both()) {
+			peer->setWallPaper(
+				Data::WallPaper::Create(&session(), data.vwallpaper()),
+				!item->out() && data.is_for_both());
+		}
 	}, [&](const MTPDmessageActionChatJoinedByRequest &data) {
 		processJoinedPeer(item->from());
 	}, [&](const MTPDmessageActionTopicCreate &data) {
@@ -2809,6 +2814,7 @@ void History::applyDialog(
 				}
 			}
 		}
+		channel->setViewAsMessagesFlag(data.is_view_forum_as_messages());
 	}
 	owner().notifySettings().apply(
 		MTP_notifyPeer(data.vpeer()),
@@ -3190,6 +3196,7 @@ void History::insertMessageToBlocks(not_null<HistoryItem*> item) {
 				const auto lastDate = chatListTimeId();
 				if (!lastDate || itemDate >= lastDate) {
 					setLastMessage(item);
+					owner().notifyHistoryChangeDelayed(this);
 				}
 				return;
 			}
@@ -3225,6 +3232,10 @@ void History::checkLocalMessages() {
 		&& goodDate(peer->asChannel()->inviteDate)) {
 		insertJoinedMessage();
 	}
+}
+
+HistoryItem *History::joinedMessageInstance() const {
+	return _joinedMessage;
 }
 
 void History::removeJoinedMessage() {

@@ -47,7 +47,6 @@ settingsOptionDisabled: SettingsButton(settingsButtonNoIcon) {
 	textBgOver: windowBg;
 	toggleOver: infoProfileToggle;
 }
-settingsSectionSkip: 6px;
 settingsButtonRightSkip: 23px;
 settingsScalePadding: margins(60px, 7px, 22px, 4px);
 settingsBigScalePadding: margins(21px, 7px, 21px, 4px);
@@ -72,13 +71,13 @@ settingsUpdateState: FlatLabel(defaultFlatLabel) {
 settingsUpdate: SettingsButton(infoMainButton, settingsButtonNoIcon) {
 }
 settingsUpdateStatePosition: point(22px, 29px);
-settingsDividerLabelPadding: margins(22px, 8px, 22px, 16px);
 
 settingsIconChat: icon {{ "settings/chat", settingsIconFg }};
 settingsIconInterfaceScale: icon {{ "settings/interface_scale", settingsIconFg }};
 settingsIconStickers: icon {{ "settings/stickers", settingsIconFg }};
 settingsIconEmoji: icon {{ "settings/emoji", settingsIconFg }};
 
+settingsPremiumIconWallpapers: icon {{ "settings/photo", settingsIconFg }};
 settingsPremiumIconStories: icon {{ "settings/stories", settingsIconFg }};
 settingsPremiumIconChannelsOff: icon {{ "settings/premium/channels_off", settingsIconFg }};
 settingsPremiumIconDouble: icon {{ "settings/premium/double", settingsIconFg }};
@@ -102,8 +101,6 @@ settingsStoriesIconLinks: icon {{ "menu/links_profile", premiumButtonBg1 }};
 settingsPremiumNewBadge: FlatLabel(defaultFlatLabel) {
 	style: TextStyle(semiboldTextStyle) {
 		font: font(10px semibold);
-		linkFont: font(10px semibold);
-		linkFontOver: font(10px semibold);
 	}
 	textFg: windowFgActive;
 }
@@ -130,19 +127,6 @@ settingsSendTypeSkip: 5px;
 
 settingsBackgroundThumb: 76px;
 settingsThumbSkip: 16px;
-settingsSubsectionTitle: FlatLabel(defaultFlatLabel) {
-	style: TextStyle(semiboldTextStyle) {
-		font: font(boxFontSize semibold);
-		linkFont: font(boxFontSize semibold);
-		linkFontOver: font(boxFontSize semibold underline);
-	}
-	textFg: windowActiveTextFg;
-	minWidth: 240px;
-}
-settingsSubsectionTitleRight: FlatLabel(settingsSubsectionTitle) {
-	minWidth: 0px;
-}
-settingsSubsectionTitlePadding: margins(22px, 7px, 10px, 9px);
 settingsBackgroundPadding: margins(22px, 11px, 10px, 12px);
 settingsTileSkip: 15px;
 settingsFromGalleryTop: 2px;
@@ -215,8 +199,6 @@ settingsCoverName: FlatLabel(defaultFlatLabel) {
 	maxHeight: 24px;
 	style: TextStyle(defaultTextStyle) {
 		font: font(17px semibold);
-		linkFont: font(17px semibold);
-		linkFontOver: font(17px semibold);
 	}
 }
 settingsCoverStatus: FlatLabel(defaultFlatLabel) {
@@ -305,8 +287,6 @@ settingsDeviceName: InputField(defaultInputField) {
 dictionariesSectionButton: SettingsButton(settingsUpdateToggle) {
 	style: TextStyle(defaultTextStyle) {
 		font: font(14px semibold);
-		linkFont: font(14px semibold);
-		linkFontOver: font(14px semibold underline);
 	}
 }
 
@@ -349,8 +329,6 @@ sessionBigName: FlatLabel(defaultFlatLabel) {
 	maxHeight: 29px;
 	style: TextStyle(defaultTextStyle) {
 		font: font(20px semibold);
-		linkFont: font(20px semibold);
-		linkFontOver: font(20px semibold underline);
 	}
 	align: align(top);
 }
@@ -434,8 +412,6 @@ notifyPreviewBottomSkip: 9px;
 settingsPremiumButtonPadding: margins(11px, 11px, 11px, 3px);
 settingsPremiumTopBarBackIcon: icon {{ "info/info_back", premiumButtonFg }};
 settingsPremiumTopBarBackIconOver: icon {{ "info/info_back", premiumButtonFg }};
-settingsPremiumStarSize: size(84px, 81px);
-settingsPremiumStarTopSkip: 37px;
 settingsPremiumTopBarBack: IconButton(infoTopBarBack) {
 	icon: settingsPremiumTopBarBackIcon;
 	iconOver: settingsPremiumTopBarBackIconOver;
@@ -477,22 +453,6 @@ settingsPremiumPreviewIconTitlePadding: margins(62px, 13px, 24px, 1px);
 settingsPremiumPreviewIconAboutPadding: margins(62px, 0px, 24px, 0px);
 settingsPremiumPreviewIconPosition: point(20px, 7px);
 
-settingsPremiumTitlePadding: margins(0px, 18px, 0px, 11px);
-settingsPremiumAboutTextStyle: TextStyle(defaultTextStyle) {
-	font: font(12px);
-	linkFont: font(12px underline);
-	linkFontOver: font(12px underline);
-	lineHeight: 18px;
-}
-settingsPremiumAbout: FlatLabel(defaultFlatLabel) {
-	style: settingsPremiumAboutTextStyle;
-	palette: TextPalette(defaultTextPalette) {
-		linkFg: premiumButtonFg;
-	}
-	align: align(top);
-	textFg: premiumButtonFg;
-	minWidth: 190px;
-}
 settingsPremiumArrowShift: point(-5px, -1px);
 settingsPremiumArrow: icon{{ "settings/premium/arrow", menuIconFg }};
 settingsPremiumArrowOver: icon{{ "settings/premium/arrow", menuIconFgOver }};
@@ -504,17 +464,9 @@ settingsPremiumUserTitlePadding: margins(0px, 16px, 0px, 6px);
 settingsPremiumUserTitle: FlatLabel(boxTitle) {
 	style: TextStyle(defaultTextStyle) {
 		font: boxTitleFont;
-		linkFont: boxTitleFont;
-		linkFontOver: font(16px semibold underline);
 		lineHeight: 14px;
 	}
 	minWidth: 300px;
-	maxHeight: 0px;
-	align: align(top);
-}
-settingsPremiumUserAbout: FlatLabel(boxDividerLabel) {
-	style: settingsPremiumAboutTextStyle;
-	minWidth: 315px;
 	maxHeight: 0px;
 	align: align(top);
 }
@@ -535,14 +487,6 @@ settingsNotificationType: SettingsButton(settingsButton) {
 }
 settingsNotificationTypeDetails: FlatLabel(defaultFlatLabel) {
 	textFg: windowSubTextFg;
-}
-
-requestPeerRestriction: FlatLabel(defaultFlatLabel) {
-	minWidth: 240px;
-	textFg: membersAboutLimitFg;
-	style: TextStyle(boxTextStyle) {
-		lineHeight: 22px;
-	}
 }
 
 powerSavingButton: SettingsButton(settingsButton) {
@@ -566,13 +510,9 @@ filterInviteBox: Box(defaultBox) {
 }
 filterInviteButtonStyle: TextStyle(defaultTextStyle) {
 	font: font(13px semibold);
-	linkFont: font(13px underline);
-	linkFontOver: font(13px underline);
 }
 filterInviteButtonBadgeStyle: TextStyle(defaultTextStyle) {
 	font: font(12px semibold);
-	linkFont: font(12px underline);
-	linkFontOver: font(12px underline);
 }
 filterInviteButtonBadgePadding: margins(5px, 0px, 5px, 2px);
 filterInviteButtonBadgeSkip: 5px;
@@ -580,8 +520,6 @@ filterLinkDividerLabelPadding: margins(0px, 10px, 0px, 17px);
 filterLinkTitlePadding: margins(0px, 15px, 0px, 17px);
 filterLinkAboutTextStyle: TextStyle(defaultTextStyle) {
 	font: font(12px);
-	linkFont: font(12px underline);
-	linkFontOver: font(12px underline);
 	lineHeight: 17px;
 }
 filterLinkAbout: FlatLabel(defaultFlatLabel) {
@@ -607,3 +545,15 @@ filterLinkSubsectionTitlePadding: margins(0px, 5px, 0px, -4px);
 filterLinkChatsList: PeerList(peerListBox) {
 	padding: margins(0px, 0px, 0px, membersMarginBottom);
 }
+
+settingsColorSampleSize: 20px;
+settingsColorSampleCenter: 6px;
+settingsColorSampleCenterRadius: 2px;
+settingsColorSamplePadding: margins(8px, 2px, 8px, 2px);
+settingsColorSampleSkip: 6px;
+settingsColorButton: SettingsButton(settingsButton) {
+	padding: margins(60px, 10px, 48px, 10px);
+}
+settingsColorRadioMargin: 17px;
+settingsColorRadioSkip: 13px;
+settingsColorRadioStroke: 2px;

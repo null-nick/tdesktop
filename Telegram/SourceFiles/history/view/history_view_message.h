@@ -56,10 +56,6 @@ struct BottomRippleMask {
 	int shift = 0;
 };
 
-[[nodiscard]] style::color FromNameFg(
-	const Ui::ChatPaintContext &context,
-	PeerId peerId);
-
 class Message final : public Element {
 public:
 	Message(
@@ -99,6 +95,9 @@ public:
 		QPoint point,
 		InfoDisplayType type) const override;
 	TextForMimeData selectedText(TextSelection selection) const override;
+	SelectedQuote selectedQuote(TextSelection selection) const override;
+	TextSelection selectionFromQuote(
+		const SelectedQuote &quote) const override;
 	TextSelection adjustSelection(
 		TextSelection selection,
 		TextSelectType type) const override;
@@ -137,8 +136,9 @@ public:
 	[[nodiscard]] ClickHandlerPtr rightActionLink(
 		std::optional<QPoint> pressPoint) const override;
 	[[nodiscard]] TimeId displayedEditDate() const override;
-	[[nodiscard]] HistoryMessageReply *displayedReply() const override;
 	[[nodiscard]] bool toggleSelectionByHandlerClick(
+		const ClickHandlerPtr &handler) const override;
+	[[nodiscard]] bool allowTextSelectionByHandler(
 		const ClickHandlerPtr &handler) const override;
 	[[nodiscard]] int infoWidth() const override;
 	[[nodiscard]] int bottomInfoFirstLineWidth() const override;
@@ -266,6 +266,7 @@ private:
 	[[nodiscard]] int visibleTextLength() const;
 	[[nodiscard]] int visibleMediaTextLength() const;
 	[[nodiscard]] bool needInfoDisplay() const;
+	[[nodiscard]] bool invertMedia() const;
 
 	[[nodiscard]] bool isPinnedContext() const;
 
@@ -305,7 +306,9 @@ private:
 	mutable std::unique_ptr<FromNameStatus> _fromNameStatus;
 	Ui::Text::String _rightBadge;
 	mutable int _fromNameVersion = 0;
-	int _bubbleWidthLimit = 0;
+	uint32 _bubbleWidthLimit : 30 = 0;
+	uint32 _invertMedia : 1 = 0;
+	uint32 _hideReply : 1 = 0;
 
 	BottomInfo _bottomInfo;
 
