@@ -523,7 +523,7 @@ bool ResolveSettings(
 			return {};
 		} else if (section == u"auto_delete"_q) {
 			return ::Settings::GlobalTTLId();
-		} else if (section == u"information"_q) {
+		} else if ((section == u"information"_q) || (section == u"edit_profile"_q)) {
 			return ::Settings::Information::Id();
 		}
 		return ::Settings::Main::Id();
