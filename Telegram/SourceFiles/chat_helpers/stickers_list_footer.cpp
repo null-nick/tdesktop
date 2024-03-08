@@ -114,10 +114,7 @@ std::optional<EmojiSection> SetIdEmojiSection(uint64 id) {
 rpl::producer<std::vector<GifSection>> GifSectionsValue(
 		not_null<Main::Session*> session) {
 	const auto config = &session->account().appConfig();
-	return rpl::single(
-		rpl::empty_value()
-	) | rpl::then(
-		config->refreshed()
+	return config->value(
 	) | rpl::map([=] {
 		return config->get<std::vector<QString>>(
 			u"gif_search_emojies"_q,
@@ -635,7 +632,7 @@ void StickersListFooter::paint(
 	if (context.expanding) {
 		const auto both = clip.intersected(
 			context.clip.marginsRemoved(
-				{ context.radius, 0, context.radius, 0 }));
+				{ 0/*context.radius*/, 0, context.radius, 0 }));
 		if (both.isEmpty()) {
 			return;
 		}

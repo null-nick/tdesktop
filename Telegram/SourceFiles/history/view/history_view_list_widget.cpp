@@ -398,14 +398,6 @@ ListWidget::ListWidget(
 		reactionChosen(reaction);
 	}, lifetime());
 
-	_reactionsManager->premiumPromoChosen(
-	) | rpl::start_with_next([=] {
-		_reactionsManager->updateButton({});
-		ShowPremiumPreviewBox(
-			_controller,
-			PremiumPreview::InfiniteReactions);
-	}, lifetime());
-
 	Reactions::SetupManagerList(
 		_reactionsManager.get(),
 		_reactionsItem.value());
@@ -901,7 +893,7 @@ not_null<Element*> ListWidget::enforceViewForItem(
 			return j->second.get();
 		}
 	}
-	const auto [i, ok] = _views.emplace(
+	const auto &[i, ok] = _views.emplace(
 		item,
 		item->createView(this));
 	return i->second.get();
@@ -1094,7 +1086,7 @@ void ListWidget::repaintScrollDateCallback() {
 
 auto ListWidget::collectSelectedItems() const -> SelectedItems {
 	auto transformation = [&](const auto &item) {
-		const auto [itemId, selection] = item;
+		const auto &[itemId, selection] = item;
 		auto result = SelectedItem(itemId);
 		result.canDelete = selection.canDelete;
 		result.canForward = selection.canForward;
@@ -1731,12 +1723,18 @@ void ListWidget::elementSendBotCommand(
 	_delegate->listSendBotCommand(command, context);
 }
 
+void ListWidget::elementSearchInList(
+		const QString &query,
+		const FullMsgId &context) {
+	_delegate->listSearch(query, context);
+}
+
 void ListWidget::elementHandleViaClick(not_null<UserData*> bot) {
 	_delegate->listHandleViaClick(bot);
 }
 
 bool ListWidget::elementIsChatWide() {
-	return _isChatWide;
+	return _overrideIsChatWide.value_or(_isChatWide);
 }
 
 not_null<Ui::PathShiftGradient*> ListWidget::elementPathShiftGradient() {
@@ -1794,7 +1792,7 @@ void ListWidget::updateItemsGeometry() {
 			if (view->isHidden()) {
 				view->setDisplayDate(false);
 			} else {
-				view->setDisplayDate(true);
+				view->setDisplayDate(_context != Context::ShortcutMessages);
 				view->setAttachToPrevious(false);
 				return i;
 			}
@@ -1939,6 +1937,9 @@ int ListWidget::resizeGetHeight(int newWidth) {
 	_itemsTop = (_minHeight > _itemsHeight + st::historyPaddingBottom)
 		? (_minHeight - _itemsHeight - st::historyPaddingBottom)
 		: 0;
+	if (_emptyInfo) {
+		_emptyInfo->setVisible(isEmpty());
+	}
 	return _itemsTop + _itemsHeight + st::historyPaddingBottom;
 }
 
@@ -2009,10 +2010,10 @@ Ui::ChatPaintContext ListWidget::preparePaintContext(
 		const QRect &clip) const {
 	return controller()->preparePaintContext({
 		.theme = _delegate->listChatTheme(),
-		.visibleAreaTop = _visibleTop,
-		.visibleAreaTopGlobal = mapToGlobal(QPoint(0, _visibleTop)).y(),
-		.visibleAreaWidth = width(),
 		.clip = clip,
+		.visibleAreaPositionGlobal = mapToGlobal(QPoint(0, _visibleTop)),
+		.visibleAreaTop = _visibleTop,
+		.visibleAreaWidth = width(),
 	});
 }
 
@@ -2050,7 +2051,8 @@ void ListWidget::checkActivation() {
 }
 
 void ListWidget::paintEvent(QPaintEvent *e) {
-	if (_controller->contentOverlapped(this, e)) {
+	if ((_context != Context::ShortcutMessages)
+		&& _controller->contentOverlapped(this, e)) {
 		return;
 	}
 
@@ -2164,6 +2166,21 @@ void ListWidget::paintEvent(QPaintEvent *e) {
 	context.translate(0, top);
 	p.translate(0, -top);
 
+	paintUserpics(p, context, clip);
+	paintDates(p, context, clip);
+
+	_reactionsManager->paint(p, context);
+	_emojiInteractions->paint(p);
+}
+
+void ListWidget::paintUserpics(
+		Painter &p,
+		const Ui::ChatPaintContext &context,
+		QRect clip) {
+	if (_context == Context::ShortcutMessages) {
+		return;
+	}
+	const auto session = &controller()->session();
 	enumerateUserpics([&](not_null<Element*> view, int userpicTop) {
 		// stop the enumeration if the userpic is below the painted rect
 		if (userpicTop >= clip.top() + clip.height()) {
@@ -2181,12 +2198,42 @@ void ListWidget::paintEvent(QPaintEvent *e) {
 					userpicTop,
 					view->width(),
 					st::msgPhotoSize);
+			} else if (const auto info = item->displayHiddenSenderInfo()) {
+				if (info->customUserpic.empty()) {
+					info->emptyUserpic.paintCircle(
+						p,
+						st::historyPhotoLeft,
+						userpicTop,
+						view->width(),
+						st::msgPhotoSize);
+				} else {
+					auto &userpic = _hiddenSenderUserpics[item->id];
+					const auto valid = info->paintCustomUserpic(
+						p,
+						userpic,
+						st::historyPhotoLeft,
+						userpicTop,
+						view->width(),
+						st::msgPhotoSize);
+					if (!valid) {
+						info->customUserpic.load(session, item->fullId());
+					}
+				}
 			} else {
 				Unexpected("Corrupt forwarded information in message.");
 			}
 		}
 		return true;
 	});
+}
+
+void ListWidget::paintDates(
+		Painter &p,
+		const Ui::ChatPaintContext &context,
+		QRect clip) {
+	if (_context == Context::ShortcutMessages) {
+		return;
+	}
 
 	auto dateHeight = st::msgServicePadding.bottom() + st::msgServiceFont->height + st::msgServicePadding.top();
 	auto scrollDateOpacity = _scrollDateOpacity.value(_scrollDateShown ? 1. : 0.);
@@ -2233,9 +2280,6 @@ void ListWidget::paintEvent(QPaintEvent *e) {
 		}
 		return true;
 	});
-
-	_reactionsManager->paint(p, context);
-	_emojiInteractions->paint(p);
 }
 
 void ListWidget::maybeMarkReactionsRead(not_null<HistoryItem*> item) {
@@ -2620,9 +2664,7 @@ void ListWidget::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 			desiredPosition,
 			reactItem,
 			[=](ChosenReaction reaction) { reactionChosen(reaction); },
-			[=](FullMsgId context) { ShowPremiumPreviewBox(
-				_controller,
-				PremiumPreview::InfiniteReactions); },
+			ItemReactionsAbout(reactItem),
 			_controller->cachedReactionIconFactory().createMethod())
 		: AttachSelectorResult::Skipped;
 	if (attached == AttachSelectorResult::Failed) {
@@ -3644,7 +3686,7 @@ void ListWidget::performDrag() {
 		_reactionsManager->updateButton({});
 		_controller->widget()->launchDrag(
 			std::move(mimeData),
-			crl::guard(this, [=] { mouseActionUpdate(QCursor::pos()); }));;
+			crl::guard(this, [=] { mouseActionUpdate(QCursor::pos()); }));
 	}
 }
 
@@ -3720,7 +3762,8 @@ void ListWidget::refreshAttachmentsFromTill(int from, int till) {
 		} else {
 			const auto viewDate = view->dateTime();
 			const auto nextDate = next->dateTime();
-			next->setDisplayDate(nextDate.date() != viewDate.date());
+			next->setDisplayDate(_context != Context::ShortcutMessages
+				&& nextDate.date() != viewDate.date());
 			auto attached = next->computeIsAttachToPrevious(view);
 			next->setAttachToPrevious(attached, view);
 			view->setAttachToNext(attached, next);
@@ -3745,7 +3788,7 @@ void ListWidget::refreshItem(not_null<const Element*> view) {
 			}
 			return nullptr;
 		}();
-		const auto [i, ok] = _views.emplace(
+		const auto &[i, ok] = _views.emplace(
 			item,
 			item->createView(this, was.get()));
 		const auto now = i->second.get();
@@ -3915,6 +3958,13 @@ void ListWidget::replyNextMessage(FullMsgId fullId, bool next) {
 
 void ListWidget::setEmptyInfoWidget(base::unique_qptr<Ui::RpWidget> &&w) {
 	_emptyInfo = std::move(w);
+	if (_emptyInfo) {
+		_emptyInfo->setVisible(isEmpty());
+	}
+}
+
+void ListWidget::overrideIsChatWide(bool isWide) {
+	_overrideIsChatWide = isWide;
 }
 
 ListWidget::~ListWidget() {

@@ -143,7 +143,7 @@ void EditParticipantBox::Inner::paintEvent(QPaintEvent *e) {
 				? tr::lng_status_bot_reads_all
 				: tr::lng_status_bot_not_reads_all)(tr::now);
 		}
-		return Data::OnlineText(_user->onlineTill, base::unixtime::now());
+		return Data::OnlineText(_user->lastseen(), base::unixtime::now());
 	}();
 	p.setFont(st::contactsStatusFont);
 	p.setPen(st::contactsStatusFg);
@@ -216,6 +216,9 @@ ChatAdminRightsInfo EditAdminBox::defaultRights() const {
 		: peer()->isMegagroup()
 		? ChatAdminRightsInfo{ (Flag::ChangeInfo
 			| Flag::DeleteMessages
+			| Flag::PostStories
+			| Flag::EditStories
+			| Flag::DeleteStories
 			| Flag::BanUsers
 			| Flag::InviteByLinkOrAdd
 			| Flag::ManageTopics
@@ -225,6 +228,9 @@ ChatAdminRightsInfo EditAdminBox::defaultRights() const {
 			| Flag::PostMessages
 			| Flag::EditMessages
 			| Flag::DeleteMessages
+			| Flag::PostStories
+			| Flag::EditStories
+			| Flag::DeleteStories
 			| Flag::InviteByLinkOrAdd
 			| Flag::ManageCall) };
 }
@@ -840,7 +846,7 @@ void EditRestrictedBox::createUntilGroup() {
 
 void EditRestrictedBox::createUntilVariants() {
 	auto addVariant = [&](int value, const QString &text) {
-		if (!canSave() && _untilGroup->value() != value) {
+		if (!canSave() && _untilGroup->current() != value) {
 			return;
 		}
 		_untilVariants.emplace_back(

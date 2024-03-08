@@ -124,6 +124,9 @@ public:
 	virtual void listSendBotCommand(
 		const QString &command,
 		const FullMsgId &context) = 0;
+	virtual void listSearch(
+		const QString &query,
+		const FullMsgId &context) = 0;
 	virtual void listHandleViaClick(not_null<UserData*> bot) = 0;
 	virtual not_null<Ui::ChatTheme*> listChatTheme() = 0;
 	virtual CopyRestrictionType listCopyRestrictionType(
@@ -325,6 +328,9 @@ public:
 	void elementSendBotCommand(
 		const QString &command,
 		const FullMsgId &context) override;
+	void elementSearchInList(
+		const QString &query,
+		const FullMsgId &context) override;
 	void elementHandleViaClick(not_null<UserData*> bot) override;
 	bool elementIsChatWide() override;
 	not_null<Ui::PathShiftGradient*> elementPathShiftGradient() override;
@@ -337,6 +343,7 @@ public:
 	QString elementAuthorRank(not_null<const Element*> view) override;
 
 	void setEmptyInfoWidget(base::unique_qptr<Ui::RpWidget> &&w);
+	void overrideIsChatWide(bool isWide);
 
 	~ListWidget();
 
@@ -594,6 +601,15 @@ private:
 	void showPremiumStickerTooltip(
 		not_null<const HistoryView::Element*> view);
 
+	void paintUserpics(
+		Painter &p,
+		const Ui::ChatPaintContext &context,
+		QRect clip);
+	void paintDates(
+		Painter &p,
+		const Ui::ChatPaintContext &context,
+		QRect clip);
+
 	// This function finds all history items that are displayed and calls template method
 	// for each found message (in given direction) in the passed history with passed top offset.
 	//
@@ -625,11 +641,11 @@ private:
 	const not_null<ListDelegate*> _delegate;
 	const not_null<Window::SessionController*> _controller;
 	const std::unique_ptr<EmojiInteractions> _emojiInteractions;
+	const Context _context;
 
 	Data::MessagePosition _aroundPosition;
 	Data::MessagePosition _shownAtPosition;
 	Data::MessagePosition _initialAroundPosition;
-	Context _context;
 	int _aroundIndex = -1;
 	int _idsLimit = kMinimalIdsLimit;
 	Data::MessagesSlice _slice;
@@ -710,6 +726,7 @@ private:
 	bool _refreshingViewer = false;
 	bool _showFinished = false;
 	bool _resizePending = false;
+	std::optional<bool> _overrideIsChatWide;
 
 	// _menu must be destroyed before _whoReactedMenuLifetime.
 	rpl::lifetime _whoReactedMenuLifetime;

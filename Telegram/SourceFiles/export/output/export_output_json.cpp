@@ -446,7 +446,6 @@ QByteArray SerializeMessage(
 		pushAction("send_payment");
 		push("amount", data.amount);
 		push("currency", data.currency);
-		const auto amount = FormatMoneyAmount(data.amount, data.currency);
 		pushReplyToMsgId("invoice_message_id");
 		if (data.recurringUsed) {
 			push("recurring", "used");
@@ -592,7 +591,11 @@ QByteArray SerializeMessage(
 		pushActor();
 		pushAction("requested_peer");
 		push("button_id", data.buttonId);
-		push("peer_id", data.peerId.value);
+		auto values = std::vector<QByteArray>();
+		for (const auto &one : data.peers) {
+			values.push_back(Data::NumberToString(one.value));
+		}
+		push("peers", SerializeArray(context, values));
 	}, [&](const ActionGiftCode &data) {
 		pushAction("gift_code_prize");
 		push("gift_code", data.code);
@@ -614,6 +617,10 @@ QByteArray SerializeMessage(
 			? "set_same_chat_wallpaper"
 			: "set_chat_wallpaper");
 		pushReplyToMsgId("message_id");
+	}, [&](const ActionBoostApply &data) {
+		pushActor();
+		pushAction("boost_apply");
+		push("boosts", data.boosts);
 	}, [](v::null_t) {});
 
 	if (v::is_null(message.action.content)) {
@@ -753,7 +760,7 @@ QByteArray SerializeMessage(
 			{ "total_voters", NumberToString(data.totalVotes) },
 			{ "answers", serialized }
 		}));
-	}, [&](const Giveaway &data) {
+	}, [&](const GiveawayStart &data) {
 		context.nesting.push_back(Context::kObject);
 		const auto channels = ranges::views::all(
 			data.channels
@@ -775,6 +782,54 @@ QByteArray SerializeMessage(
 
 	pushBare("text", SerializeText(context, message.text));
 	pushBare("text_entities", SerializeText(context, message.text, true));
+
+	if (!message.inlineButtonRows.empty()) {
+		const auto serializeRow = [&](
+				const std::vector<HistoryMessageMarkupButton> &row) {
+			context.nesting.push_back(Context::kArray);
+			const auto buttons = ranges::views::all(
+				row
+			) | ranges::views::transform([&](
+					const HistoryMessageMarkupButton &entry) {
+				auto pairs = std::vector<std::pair<QByteArray, QByteArray>>();
+				pairs.push_back({
+					"type",
+					SerializeString(
+						HistoryMessageMarkupButton::TypeToString(entry)),
+				});
+				if (!entry.text.isEmpty()) {
+					pairs.push_back({
+						"text",
+						SerializeString(entry.text.toUtf8()),
+					});
+				}
+				if (!entry.data.isEmpty()) {
+					pairs.push_back({ "data", SerializeString(entry.data) });
+				}
+				if (!entry.forwardText.isEmpty()) {
+					pairs.push_back({
+						"forward_text",
+						SerializeString(entry.forwardText.toUtf8()),
+					});
+				}
+				if (entry.buttonId) {
+					pairs.push_back({
+						"button_id",
+						NumberToString(entry.buttonId),
+					});
+				}
+				return SerializeObject(context, pairs);
+			}) | ranges::to_vector;
+			context.nesting.pop_back();
+			return SerializeArray(context, buttons);
+		};
+		context.nesting.push_back(Context::kArray);
+		const auto rows = ranges::views::all(
+			message.inlineButtonRows
+		) | ranges::views::transform(serializeRow) | ranges::to_vector;
+		context.nesting.pop_back();
+		pushBare("inline_bot_buttons", SerializeArray(context, rows));
+	}
 
 	return serialized();
 }
@@ -1078,7 +1133,7 @@ Result JsonWriter::writeFrequentContacts(const Data::ContactsList &data) {
 				{ "id", Data::NumberToString(Data::PeerToBareId(top.peer.id())) },
 				{ "category", SerializeString(category) },
 				{ "type", SerializeString(type) },
-				{ "name",  StringAllowNull(top.peer.name()) },
+				{ "name", StringAllowNull(top.peer.name()) },
 				{ "rating", Data::NumberToString(top.rating) },
 			}));
 		}

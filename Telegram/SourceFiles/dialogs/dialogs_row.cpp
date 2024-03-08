@@ -86,7 +86,7 @@ constexpr auto kBlurRadius = 24;
 	q.drawArc(innerRect, arc::kQuarterLength, arc::kHalfLength);
 
 	q.setClipRect(innerRect
-		- QMargins(innerRect.width() / 2, 0, -penWidth, -penWidth));
+		- QMargins(innerRect.width() / 2, -penWidth, -penWidth, -penWidth));
 	pen.setStyle(Qt::DotLine);
 	q.setPen(pen);
 	q.drawEllipse(innerRect);
@@ -106,7 +106,6 @@ QRect CornerBadgeTTLRect(int photoSize) {
 }
 
 QImage BlurredDarkenedPart(QImage image, QRect part) {
-	const auto ratio = style::DevicePixelRatio();
 	auto blurred = Images::BlurLargeImage(
 		std::move(image),
 		kBlurRadius).copy(part);
@@ -262,8 +261,10 @@ void Row::recountHeight(float64 narrowRatio) {
 			: st::defaultDialogRow.height;
 	} else if (_id.folder()) {
 		_height = st::defaultDialogRow.height;
-	} else {
+	} else if (_id.topic()) {
 		_height = st::forumTopicRow.height;
+	} else {
+		_height = st::defaultDialogRow.height;
 	}
 }
 
@@ -447,7 +448,7 @@ void Row::paintUserpic(
 		? _cornerBadgeShown
 		: !_cornerBadgeUserpic->layersManager.isDisplayedNone();
 	const auto storiesPeer = peer
-		? ((peer->isUser() || peer->isBroadcast()) ? peer : nullptr)
+		? ((peer->isUser() || peer->isChannel()) ? peer : nullptr)
 		: nullptr;
 	const auto storiesFolder = peer ? nullptr : _id.folder();
 	const auto storiesHas = storiesPeer

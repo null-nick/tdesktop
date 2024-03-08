@@ -88,6 +88,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "storage/localstorage.h"
 #include "payments/payments_checkout_process.h"
 #include "export/export_manager.h"
+#include "webrtc/webrtc_environment.h"
 #include "window/window_session_controller.h"
 #include "window/window_controller.h"
 #include "boxes/abstract_box.h"
@@ -150,6 +151,7 @@ Application::Application()
 , _private(std::make_unique<Private>())
 , _platformIntegration(Platform::Integration::Create())
 , _batterySaving(std::make_unique<base::BatterySaving>())
+, _mediaDevices(std::make_unique<Webrtc::Environment>())
 , _databases(std::make_unique<Storage::Databases>())
 , _animationsManager(std::make_unique<Ui::Animations::Manager>())
 , _clearEmojiImageLoaderTimer([=] { clearEmojiSourceImages(); })
@@ -360,7 +362,7 @@ void Application::run() {
 	startDomain();
 	startTray();
 
-	_lastActivePrimaryWindow->widget()->show();
+	_lastActivePrimaryWindow->firstShow();
 
 	startMediaView();
 
@@ -428,11 +430,12 @@ void Application::showOpenGLCrashNotification() {
 		Local::writeSettings();
 		Restart();
 	};
-	const auto keepDisabled = [=] {
+	const auto keepDisabled = [=](Fn<void()> close) {
 		Ui::GL::ForceDisable(true);
 		Ui::GL::CrashCheckFinish();
 		settings().setDisableOpenGL(true);
 		Local::writeSettings();
+		close();
 	};
 	_lastActivePrimaryWindow->show(Ui::MakeConfirmBox({
 		.text = ""
@@ -682,7 +685,8 @@ bool Application::eventFilter(QObject *object, QEvent *e) {
 	} break;
 
 	case QEvent::ThemeChange: {
-		if (Platform::IsLinux() && object == QGuiApplication::allWindows().first()) {
+		if (Platform::IsLinux()
+				&& object == QGuiApplication::allWindows().constFirst()) {
 			Core::App().refreshApplicationIcon();
 			Core::App().tray().updateIconCounters();
 		}
@@ -1319,7 +1323,7 @@ Window::Controller *Application::ensureSeparateWindowForPeer(
 		std::make_unique<Window::Controller>(peer, showAtMsgId)
 	).first->second.get();
 	processCreatedWindow(result);
-	result->widget()->show();
+	result->firstShow();
 	result->finishFirstShow();
 	return activate(result);
 }
@@ -1339,7 +1343,7 @@ Window::Controller *Application::ensureSeparateWindowForAccount(
 		std::make_unique<Window::Controller>(account)
 	).first->second.get();
 	processCreatedWindow(result);
-	result->widget()->show();
+	result->firstShow();
 	result->finishFirstShow();
 	return activate(result);
 }

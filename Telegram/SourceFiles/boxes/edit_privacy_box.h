@@ -12,6 +12,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "api/api_user_privacy.h"
 
 namespace Ui {
+class GenericBox;
 class VerticalLayout;
 class FlatLabel;
 class LinkButton;
@@ -74,7 +75,8 @@ public:
 	}
 	[[nodiscard]] virtual object_ptr<Ui::RpWidget> setupBelowWidget(
 			not_null<Window::SessionController*> controller,
-			not_null<QWidget*> parent) {
+			not_null<QWidget*> parent,
+			rpl::producer<Option> option) {
 		return { nullptr };
 	}
 
@@ -84,6 +86,12 @@ public:
 		saveCallback();
 	}
 	virtual void saveAdditional() {
+	}
+
+	[[nodiscard]] virtual Fn<void()> premiumClickedCallback(
+			Option option,
+			not_null<Window::SessionController*> controller) {
+		return nullptr;
 	}
 
 	virtual ~EditPrivacyController() = default;
@@ -146,3 +154,7 @@ private:
 	Value _value;
 
 };
+
+void EditMessagesPrivacyBox(
+	not_null<Ui::GenericBox*> box,
+	not_null<Window::SessionController*> controller);

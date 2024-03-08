@@ -7,29 +7,89 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "boxes/edit_privacy_box.h"
 
+#include "api/api_global_privacy.h"
+#include "ui/layers/generic_box.h"
 #include "ui/widgets/checkbox.h"
-#include "ui/widgets/labels.h"
-#include "ui/widgets/buttons.h"
+#include "ui/widgets/shadow.h"
 #include "ui/text/text_utilities.h"
+#include "ui/toast/toast.h"
 #include "ui/wrap/slide_wrap.h"
-#include "ui/wrap/vertical_layout.h"
+#include "ui/painter.h"
 #include "ui/vertical_list.h"
 #include "history/history.h"
 #include "boxes/peer_list_controllers.h"
+#include "settings/settings_premium.h"
 #include "settings/settings_privacy_security.h"
 #include "calls/calls_instance.h"
-#include "base/binary_guard.h"
 #include "lang/lang_keys.h"
 #include "apiwrap.h"
 #include "main/main_session.h"
 #include "data/data_user.h"
 #include "data/data_chat.h"
 #include "data/data_channel.h"
+#include "data/data_peer_values.h"
 #include "window/window_session_controller.h"
 #include "styles/style_settings.h"
 #include "styles/style_layers.h"
+#include "styles/style_menu_icons.h"
 
 namespace {
+namespace {
+
+void CreateRadiobuttonLock(
+		not_null<Ui::RpWidget*> widget,
+		const style::Checkbox &st) {
+	const auto lock = Ui::CreateChild<Ui::RpWidget>(widget.get());
+	lock->setAttribute(Qt::WA_TransparentForMouseEvents);
+
+	lock->resize(st::defaultRadio.diameter, st::defaultRadio.diameter);
+
+	widget->sizeValue(
+	) | rpl::start_with_next([=, &st](QSize size) {
+		lock->move(st.checkPosition);
+	}, lock->lifetime());
+
+	lock->paintRequest() | rpl::start_with_next([=] {
+		auto p = QPainter(lock);
+		auto hq = PainterHighQualityEnabler(p);
+		const auto &icon = st::messagePrivacyLock;
+		const auto size = st::defaultRadio.diameter;
+		const auto image = icon.instance(st::checkboxFg->c);
+		p.drawImage(QRectF(
+			(size - icon.width()) / 2.,
+			(size - icon.height()) / 2.,
+			icon.width(),
+			icon.height()), image);
+	}, lock->lifetime());
+}
+
+void AddPremiumRequiredRow(
+		not_null<Ui::RpWidget*> widget,
+		not_null<Main::Session*> session,
+		Fn<void()> clickedCallback,
+		Fn<void()> setDefaultOption,
+		const style::Checkbox &st) {
+	const auto row = Ui::CreateChild<Ui::AbstractButton>(widget.get());
+
+	widget->sizeValue(
+	) | rpl::start_with_next([=](const QSize &s) {
+		row->resize(s);
+	}, row->lifetime());
+	row->setClickedCallback(std::move(clickedCallback));
+
+	CreateRadiobuttonLock(row, st);
+
+	Data::AmPremiumValue(
+		session
+	) | rpl::start_with_next([=](bool premium) {
+		row->setVisible(!premium);
+		if (!premium) {
+			setDefaultOption();
+		}
+	}, row->lifetime());
+}
+
+} // namespace
 
 class PrivacyExceptionsBoxController : public ChatsListBoxController {
 public:
@@ -325,10 +385,29 @@ void EditPrivacyBox::setupContent() {
 		content,
 		_controller->optionsTitleKey(),
 		{ 0, st::settingsPrivacySkipTop, 0, 0 });
-	addOptionRow(Option::Everyone);
-	addOptionRow(Option::Contacts);
-	addOptionRow(Option::CloseFriends);
-	addOptionRow(Option::Nobody);
+
+	const auto options = {
+		Option::Everyone,
+		Option::Contacts,
+		Option::CloseFriends,
+		Option::Nobody,
+	};
+	for (const auto &option : options) {
+		if (const auto row = addOptionRow(option)) {
+			const auto premiumCallback = _controller->premiumClickedCallback(
+				option,
+				_window);
+			if (premiumCallback) {
+				AddPremiumRequiredRow(
+					row,
+					&_window->session(),
+					premiumCallback,
+					[=] { group->setValue(Option::Everyone); },
+					st::messagePrivacyCheck);
+			}
+		}
+	}
+
 	const auto warning = addLabelOrDivider(
 		content,
 		_controller->warning(),
@@ -340,7 +419,7 @@ void EditPrivacyBox::setupContent() {
 	auto middle = _controller->setupMiddleWidget(
 		_window,
 		content,
-		std::move(optionValue));
+		rpl::duplicate(optionValue));
 	if (middle) {
 		content->add(std::move(middle));
 	}
@@ -357,7 +436,11 @@ void EditPrivacyBox::setupContent() {
 		_controller->exceptionsDescription() | Ui::Text::ToWithEntities(),
 		st::defaultVerticalListSkip);
 
-	if (auto below = _controller->setupBelowWidget(_window, content)) {
+	auto below = _controller->setupBelowWidget(
+		_window,
+		content,
+		rpl::duplicate(optionValue));
+	if (below) {
 		content->add(std::move(below));
 	}
 
@@ -393,4 +476,120 @@ void EditPrivacyBox::setupContent() {
 	) | rpl::start_with_next([=](int height) {
 		setDimensions(st::boxWideWidth, height);
 	}, content->lifetime());
+}
+
+void EditMessagesPrivacyBox(
+		not_null<Ui::GenericBox*> box,
+		not_null<Window::SessionController*> controller) {
+	box->setTitle(tr::lng_messages_privacy_title());
+	box->setWidth(st::boxWideWidth);
+
+	constexpr auto kOptionAll = 0;
+	constexpr auto kOptionPremium = 1;
+
+	const auto premium = controller->session().premium();
+	const auto privacy = &controller->session().api().globalPrivacy();
+	const auto inner = box->verticalLayout();
+	inner->add(object_ptr<Ui::PlainShadow>(box));
+
+	Ui::AddSkip(inner, st::messagePrivacyTopSkip);
+	Ui::AddSubsectionTitle(inner, tr::lng_messages_privacy_subtitle());
+	const auto group = std::make_shared<Ui::RadiobuttonGroup>(
+		privacy->newRequirePremiumCurrent() ? kOptionPremium : kOptionAll);
+	inner->add(
+		object_ptr<Ui::Radiobutton>(
+			inner,
+			group,
+			kOptionAll,
+			tr::lng_messages_privacy_everyone(tr::now),
+			st::messagePrivacyCheck),
+		st::settingsSendTypePadding);
+	const auto restricted = inner->add(
+		object_ptr<Ui::Radiobutton>(
+			inner,
+			group,
+			kOptionPremium,
+			tr::lng_messages_privacy_restricted(tr::now),
+			st::messagePrivacyCheck),
+		st::settingsSendTypePadding + style::margins(
+			0,
+			st::messagePrivacyRadioSkip,
+			0,
+			st::messagePrivacyBottomSkip));
+
+	using WeakToast = base::weak_ptr<Ui::Toast::Instance>;
+	const auto toast = std::make_shared<WeakToast>();
+	const auto showToast = [=] {
+		auto link = Ui::Text::Link(
+			Ui::Text::Semibold(
+				tr::lng_messages_privacy_premium_link(tr::now)));
+		(*toast) = controller->showToast({
+			.text = tr::lng_messages_privacy_premium(
+				tr::now,
+				lt_link,
+				link,
+				Ui::Text::WithEntities),
+			.st = &st::defaultMultilineToast,
+			.duration = Ui::Toast::kDefaultDuration * 2,
+			.multiline = true,
+			.filter = crl::guard(&controller->session(), [=](
+					const ClickHandlerPtr &,
+					Qt::MouseButton button) {
+				if (button == Qt::LeftButton) {
+					if (const auto strong = toast->get()) {
+						strong->hideAnimated();
+						(*toast) = nullptr;
+						Settings::ShowPremium(
+							controller,
+							u"noncontact_peers_require_premium"_q);
+						return true;
+					}
+				}
+				return false;
+			}),
+		});
+	};
+	if (!premium) {
+		CreateRadiobuttonLock(restricted, st::messagePrivacyCheck);
+
+		group->setChangedCallback([=](int value) {
+			if (value == kOptionPremium) {
+				group->setValue(kOptionAll);
+				showToast();
+			}
+		});
+	}
+
+	Ui::AddDividerText(inner, tr::lng_messages_privacy_about());
+	if (!premium) {
+		Ui::AddSkip(inner);
+		Settings::AddButtonWithIcon(
+			inner,
+			tr::lng_messages_privacy_premium_button(),
+			st::messagePrivacySubscribe,
+			{ .icon = &st::menuBlueIconPremium }
+		)->setClickedCallback([=] {
+			Settings::ShowPremium(
+				controller,
+				u"noncontact_peers_require_premium"_q);
+		});
+		Ui::AddSkip(inner);
+		Ui::AddDividerText(inner, tr::lng_messages_privacy_premium_about());
+		box->addButton(tr::lng_about_done(), [=] {
+			box->closeBox();
+		});
+	} else {
+		box->addButton(tr::lng_settings_save(), [=] {
+			if (controller->session().premium()) {
+				privacy->updateNewRequirePremium(
+					group->current() == kOptionPremium);
+				box->closeBox();
+			} else {
+				showToast();
+			}
+		});
+		box->addButton(tr::lng_cancel(), [=] {
+			box->closeBox();
+		});
+	}
 }

@@ -141,6 +141,18 @@ int PremiumLimits::topicsPinnedCurrent() const {
 	return appConfigLimit("topics_pinned_limit", 5);
 }
 
+int PremiumLimits::savedSublistsPinnedDefault() const {
+	return appConfigLimit("saved_dialogs_pinned_limit_default", 5);
+}
+int PremiumLimits::savedSublistsPinnedPremium() const {
+	return appConfigLimit("saved_dialogs_pinned_limit_premium", 100);
+}
+int PremiumLimits::savedSublistsPinnedCurrent() const {
+	return isPremium()
+		? savedSublistsPinnedPremium()
+		: savedSublistsPinnedDefault();
+}
+
 int PremiumLimits::channelsPublicDefault() const {
 	return appConfigLimit("channels_public_limit_default", 10);
 }
@@ -203,6 +215,82 @@ int PremiumLimits::appConfigLimit(
 
 bool PremiumLimits::isPremium() const {
 	return _session->premium();
+}
+
+LevelLimits::LevelLimits(not_null<Main::Session*> session)
+: _session(session) {
+}
+
+int LevelLimits::channelColorLevelMin() const {
+	return _session->account().appConfig().get<int>(
+		u"channel_color_level_min"_q,
+		5);
+}
+
+int LevelLimits::channelBgIconLevelMin() const {
+	return _session->account().appConfig().get<int>(
+		u"channel_bg_icon_level_min"_q,
+		4);
+}
+
+int LevelLimits::channelProfileBgIconLevelMin() const {
+	return _session->account().appConfig().get<int>(
+		u"channel_profile_bg_icon_level_min"_q,
+		7);
+}
+
+int LevelLimits::channelEmojiStatusLevelMin() const {
+	return _session->account().appConfig().get<int>(
+		u"channel_emoji_status_level_min"_q,
+		8);
+}
+
+int LevelLimits::channelWallpaperLevelMin() const {
+	return _session->account().appConfig().get<int>(
+		u"channel_wallpaper_level_min"_q,
+		9);
+}
+
+int LevelLimits::channelCustomWallpaperLevelMin() const {
+	return _session->account().appConfig().get<int>(
+		u"channel_custom_wallpaper_level_min"_q,
+		10);
+}
+
+int LevelLimits::groupTranscribeLevelMin() const {
+	return _session->account().appConfig().get<int>(
+		u"group_transcribe_level_min"_q,
+		6);
+}
+
+int LevelLimits::groupEmojiStickersLevelMin() const {
+	return _session->account().appConfig().get<int>(
+		u"group_emoji_stickers_level_min"_q,
+		4);
+}
+
+int LevelLimits::groupProfileBgIconLevelMin() const {
+	return _session->account().appConfig().get<int>(
+		u"group_profile_bg_icon_level_min"_q,
+		5);
+}
+
+int LevelLimits::groupEmojiStatusLevelMin() const {
+	return _session->account().appConfig().get<int>(
+		u"group_emoji_status_level_min"_q,
+		8);
+}
+
+int LevelLimits::groupWallpaperLevelMin() const {
+	return _session->account().appConfig().get<int>(
+		u"group_wallpaper_level_min"_q,
+		9);
+}
+
+int LevelLimits::groupCustomWallpaperLevelMin() const {
+	return _session->account().appConfig().get<int>(
+		u"group_custom_wallpaper_level_min"_q,
+		10);
 }
 
 } // namespace Data

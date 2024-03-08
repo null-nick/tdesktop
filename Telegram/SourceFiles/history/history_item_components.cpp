@@ -32,6 +32,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "mainwindow.h"
 #include "media/audio/media_audio.h"
 #include "media/player/media_player_instance.h"
+#include "data/business/data_shortcut_messages.h"
 #include "data/stickers/data_custom_emoji.h"
 #include "data/data_channel.h"
 #include "data/data_media_types.h"
@@ -116,7 +117,12 @@ HiddenSenderInfo::HiddenSenderInfo(
 	std::optional<uint8> colorIndex)
 : name(name)
 , colorIndex(colorIndex.value_or(
-	Data::DecideColorIndex(Data::FakePeerIdForJustName(name)))) {
+	Data::DecideColorIndex(Data::FakePeerIdForJustName(name))))
+, emptyUserpic(
+	Ui::EmptyUserpic::UserpicColor(this->colorIndex),
+	(external
+		? Ui::EmptyUserpic::ExternalName()
+		: name)) {
 	Expects(!name.isEmpty());
 
 	const auto parts = name.trimmed().split(' ', Qt::SkipEmptyParts);
@@ -148,6 +154,35 @@ ClickHandlerPtr HiddenSenderInfo::ForwardClickHandler() {
 	return hidden;
 }
 
+bool HiddenSenderInfo::paintCustomUserpic(
+		Painter &p,
+		Ui::PeerUserpicView &view,
+		int x,
+		int y,
+		int outerWidth,
+		int size) const {
+	Expects(!customUserpic.empty());
+
+	auto valid = true;
+	if (!customUserpic.isCurrentView(view.cloud)) {
+		view.cloud = customUserpic.createView();
+		valid = false;
+	}
+	const auto image = *view.cloud;
+	if (image.isNull()) {
+		emptyUserpic.paintCircle(p, x, y, outerWidth, size);
+		return valid;
+	}
+	Ui::ValidateUserpicCache(
+		view,
+		image.isNull() ? nullptr : &image,
+		image.isNull() ? &emptyUserpic : nullptr,
+		size * style::DevicePixelRatio(),
+		false);
+	p.drawImage(QRect(x, y, size, size), view.cached);
+	return valid;
+}
+
 void HistoryMessageForwarded::create(const HistoryMessageVia *via) const {
 	auto phrase = TextWithEntities();
 	const auto fromChannel = originalSender
@@ -156,7 +191,7 @@ void HistoryMessageForwarded::create(const HistoryMessageVia *via) const {
 	const auto name = TextWithEntities{
 		.text = (originalSender
 			? originalSender->name()
-			: hiddenSenderInfo->name)
+			: originalHiddenSenderInfo->name)
 	};
 	if (!originalPostAuthor.isEmpty()) {
 		phrase = tr::lng_forwarded_signed(
@@ -182,7 +217,7 @@ void HistoryMessageForwarded::create(const HistoryMessageVia *via) const {
 				lt_channel,
 				Ui::Text::Link(phrase.text, 1), // Link 1.
 				lt_inline_bot,
-				Ui::Text::Link('@' + via->bot->username(), 2),  // Link 2.
+				Ui::Text::Link('@' + via->bot->username(), 2), // Link 2.
 				Ui::Text::WithEntities);
 		} else {
 			phrase = tr::lng_forwarded_via(
@@ -190,7 +225,7 @@ void HistoryMessageForwarded::create(const HistoryMessageVia *via) const {
 				lt_user,
 				Ui::Text::Link(phrase.text, 1), // Link 1.
 				lt_inline_bot,
-				Ui::Text::Link('@' + via->bot->username(), 2),  // Link 2.
+				Ui::Text::Link('@' + via->bot->username(), 2), // Link 2.
 				Ui::Text::WithEntities);
 		}
 	} else {
@@ -267,9 +302,11 @@ ReplyFields ReplyFieldsFromMTP(
 		if (const auto id = data.vreply_to_msg_id().value_or_empty()) {
 			result.messageId = data.is_reply_to_scheduled()
 				? owner->scheduledMessages().localMessageId(id)
+				: item->shortcutId()
+				? owner->shortcutMessages().localMessageId(id)
 				: id;
 			result.topMessageId
-				= data.vreply_to_top_id().value_or(id);
+				= data.vreply_to_top_id().value_or(result.messageId.bare);
 			result.topicPost = data.is_forum_topic() ? 1 : 0;
 		}
 		if (const auto header = data.vreply_from()) {
@@ -296,7 +333,7 @@ ReplyFields ReplyFieldsFromMTP(
 		return result;
 	}, [&](const MTPDmessageReplyStoryHeader &data) {
 		return ReplyFields{
-			.externalPeerId = peerFromUser(data.vuser_id()),
+			.externalPeerId = peerFromMTP(data.vpeer()),
 			.storyId = data.vstory_id().v,
 		};
 	});
@@ -328,9 +365,9 @@ FullReplyTo ReplyToFromMTP(
 		result.quoteOffset = data.vquote_offset().value_or_empty();
 		return result;
 	}, [&](const MTPDinputReplyToStory &data) {
-		if (const auto parsed = Data::UserFromInputMTP(
+		if (const auto parsed = Data::PeerFromInputMTP(
 				&history->owner(),
-				data.vuser_id())) {
+				data.vpeer())) {
 			return FullReplyTo{
 				.storyId = { parsed->id, data.vstory_id().v },
 			};
@@ -350,13 +387,14 @@ HistoryMessageReply::~HistoryMessageReply() {
 	_fields.externalMedia = nullptr;
 }
 
-bool HistoryMessageReply::updateData(
+void HistoryMessageReply::updateData(
 		not_null<HistoryItem*> holder,
 		bool force) {
 	const auto guard = gsl::finally([&] { refreshReplyToMedia(); });
 	if (!force) {
 		if (resolvedMessage || resolvedStory || _unavailable) {
-			return true;
+			_pendingResolve = 0;
+			return;
 		}
 	}
 	const auto peerId = _fields.externalPeerId
@@ -415,10 +453,15 @@ bool HistoryMessageReply::updateData(
 		}
 		holder->history()->owner().requestItemResize(holder);
 	}
-	return resolvedMessage
+	if (resolvedMessage
 		|| resolvedStory
 		|| (!_fields.messageId && !_fields.storyId && external())
-		|| _unavailable;
+		|| _unavailable) {
+		_pendingResolve = 0;
+	} else if (!force) {
+		_pendingResolve = 1;
+		_requestedResolve = 0;
+	}
 }
 
 void HistoryMessageReply::set(ReplyFields fields) {
@@ -434,17 +477,20 @@ void HistoryMessageReply::updateFields(
 	if ((_fields.messageId != messageId)
 		&& !IsServerMsgId(_fields.messageId)) {
 		_fields.messageId = messageId;
-		if (!updateData(holder)) {
-			RequestDependentMessageItem(
-				holder,
-				_fields.externalPeerId,
-				_fields.messageId);
-		}
+		updateData(holder);
 	}
 	if ((_fields.topMessageId != topMessageId)
 		&& !IsServerMsgId(_fields.topMessageId)) {
 		_fields.topMessageId = topMessageId;
 	}
+}
+
+bool HistoryMessageReply::acquireResolve() {
+	if (!_pendingResolve || _requestedResolve) {
+		return false;
+	}
+	_requestedResolve = 1;
+	return true;
 }
 
 void HistoryMessageReply::setTopMessageId(MsgId topMessageId) {

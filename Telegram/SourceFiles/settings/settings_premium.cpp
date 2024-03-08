@@ -47,6 +47,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/wrap/padding_wrap.h"
 #include "ui/wrap/slide_wrap.h"
 #include "ui/wrap/vertical_layout.h"
+#include "ui/new_badges.h"
 #include "ui/painter.h"
 #include "ui/power_saving.h"
 #include "ui/vertical_list.h"
@@ -168,7 +169,7 @@ struct Entry {
 	const style::icon *icon;
 	rpl::producer<QString> title;
 	rpl::producer<QString> description;
-	PremiumPreview section = PremiumPreview::DoubleLimits;
+	PremiumFeature section = PremiumFeature::DoubleLimits;
 	bool newBadge = false;
 };
 
@@ -176,34 +177,69 @@ using Order = std::vector<QString>;
 
 [[nodiscard]] Order FallbackOrder() {
 	return Order{
-		u"wallpapers"_q,
 		u"stories"_q,
-		u"double_limits"_q,
 		u"more_upload"_q,
-		u"faster_download"_q,
+		u"double_limits"_q,
+		u"last_seen"_q,
 		u"voice_to_text"_q,
-		u"no_ads"_q,
-		u"emoji_status"_q,
-		u"infinite_reactions"_q,
-		u"premium_stickers"_q,
-		u"animated_emoji"_q,
-		u"advanced_chat_management"_q,
-		u"profile_badge"_q,
-		u"animated_userpics"_q,
+		u"faster_download"_q,
 		u"translations"_q,
+		u"animated_emoji"_q,
+		u"emoji_status"_q,
+		u"saved_tags"_q,
+		//u"peer_colors"_q,
+		u"wallpapers"_q,
+		u"profile_badge"_q,
+		u"message_privacy"_q,
+		u"advanced_chat_management"_q,
+		u"no_ads"_q,
+		//u"app_icons"_q,
+		u"infinite_reactions"_q,
+		u"animated_userpics"_q,
+		u"premium_stickers"_q,
+		u"business"_q,
 	};
 }
 
 [[nodiscard]] base::flat_map<QString, Entry> EntryMap() {
 	return base::flat_map<QString, Entry>{
 		{
+			u"saved_tags"_q,
+			Entry{
+				&st::settingsPremiumIconTags,
+				tr::lng_premium_summary_subtitle_tags_for_messages(),
+				tr::lng_premium_summary_about_tags_for_messages(),
+				PremiumFeature::TagsForMessages,
+				true,
+			},
+		},
+		{
+			u"last_seen"_q,
+			Entry{
+				&st::settingsPremiumIconLastSeen,
+				tr::lng_premium_summary_subtitle_last_seen(),
+				tr::lng_premium_summary_about_last_seen(),
+				PremiumFeature::LastSeen,
+				true,
+			},
+		},
+		{
+			u"message_privacy"_q,
+			Entry{
+				&st::settingsPremiumIconPrivacy,
+				tr::lng_premium_summary_subtitle_message_privacy(),
+				tr::lng_premium_summary_about_message_privacy(),
+				PremiumFeature::MessagePrivacy,
+				true,
+			},
+		},
+		{
 			u"wallpapers"_q,
 			Entry{
 				&st::settingsPremiumIconWallpapers,
 				tr::lng_premium_summary_subtitle_wallpapers(),
 				tr::lng_premium_summary_about_wallpapers(),
-				PremiumPreview::Wallpapers,
-				true,
+				PremiumFeature::Wallpapers,
 			},
 		},
 		{
@@ -212,7 +248,7 @@ using Order = std::vector<QString>;
 				&st::settingsPremiumIconStories,
 				tr::lng_premium_summary_subtitle_stories(),
 				tr::lng_premium_summary_about_stories(),
-				PremiumPreview::Stories,
+				PremiumFeature::Stories,
 			},
 		},
 		{
@@ -221,7 +257,7 @@ using Order = std::vector<QString>;
 				&st::settingsPremiumIconDouble,
 				tr::lng_premium_summary_subtitle_double_limits(),
 				tr::lng_premium_summary_about_double_limits(),
-				PremiumPreview::DoubleLimits,
+				PremiumFeature::DoubleLimits,
 			},
 		},
 		{
@@ -230,7 +266,7 @@ using Order = std::vector<QString>;
 				&st::settingsPremiumIconFiles,
 				tr::lng_premium_summary_subtitle_more_upload(),
 				tr::lng_premium_summary_about_more_upload(),
-				PremiumPreview::MoreUpload,
+				PremiumFeature::MoreUpload,
 			},
 		},
 		{
@@ -239,7 +275,7 @@ using Order = std::vector<QString>;
 				&st::settingsPremiumIconSpeed,
 				tr::lng_premium_summary_subtitle_faster_download(),
 				tr::lng_premium_summary_about_faster_download(),
-				PremiumPreview::FasterDownload,
+				PremiumFeature::FasterDownload,
 			},
 		},
 		{
@@ -248,7 +284,7 @@ using Order = std::vector<QString>;
 				&st::settingsPremiumIconVoice,
 				tr::lng_premium_summary_subtitle_voice_to_text(),
 				tr::lng_premium_summary_about_voice_to_text(),
-				PremiumPreview::VoiceToText,
+				PremiumFeature::VoiceToText,
 			},
 		},
 		{
@@ -257,7 +293,7 @@ using Order = std::vector<QString>;
 				&st::settingsPremiumIconChannelsOff,
 				tr::lng_premium_summary_subtitle_no_ads(),
 				tr::lng_premium_summary_about_no_ads(),
-				PremiumPreview::NoAds,
+				PremiumFeature::NoAds,
 			},
 		},
 		{
@@ -266,7 +302,7 @@ using Order = std::vector<QString>;
 				&st::settingsPremiumIconStatus,
 				tr::lng_premium_summary_subtitle_emoji_status(),
 				tr::lng_premium_summary_about_emoji_status(),
-				PremiumPreview::EmojiStatus,
+				PremiumFeature::EmojiStatus,
 			},
 		},
 		{
@@ -275,7 +311,7 @@ using Order = std::vector<QString>;
 				&st::settingsPremiumIconLike,
 				tr::lng_premium_summary_subtitle_infinite_reactions(),
 				tr::lng_premium_summary_about_infinite_reactions(),
-				PremiumPreview::InfiniteReactions,
+				PremiumFeature::InfiniteReactions,
 			},
 		},
 		{
@@ -284,7 +320,7 @@ using Order = std::vector<QString>;
 				&st::settingsIconStickers,
 				tr::lng_premium_summary_subtitle_premium_stickers(),
 				tr::lng_premium_summary_about_premium_stickers(),
-				PremiumPreview::Stickers,
+				PremiumFeature::Stickers,
 			},
 		},
 		{
@@ -293,7 +329,7 @@ using Order = std::vector<QString>;
 				&st::settingsIconEmoji,
 				tr::lng_premium_summary_subtitle_animated_emoji(),
 				tr::lng_premium_summary_about_animated_emoji(),
-				PremiumPreview::AnimatedEmoji,
+				PremiumFeature::AnimatedEmoji,
 			},
 		},
 		{
@@ -302,7 +338,7 @@ using Order = std::vector<QString>;
 				&st::settingsIconChat,
 				tr::lng_premium_summary_subtitle_advanced_chat_management(),
 				tr::lng_premium_summary_about_advanced_chat_management(),
-				PremiumPreview::AdvancedChatManagement,
+				PremiumFeature::AdvancedChatManagement,
 			},
 		},
 		{
@@ -311,7 +347,7 @@ using Order = std::vector<QString>;
 				&st::settingsPremiumIconStar,
 				tr::lng_premium_summary_subtitle_profile_badge(),
 				tr::lng_premium_summary_about_profile_badge(),
-				PremiumPreview::ProfileBadge,
+				PremiumFeature::ProfileBadge,
 			},
 		},
 		{
@@ -320,7 +356,7 @@ using Order = std::vector<QString>;
 				&st::settingsPremiumIconPlay,
 				tr::lng_premium_summary_subtitle_animated_userpics(),
 				tr::lng_premium_summary_about_animated_userpics(),
-				PremiumPreview::AnimatedUserpics,
+				PremiumFeature::AnimatedUserpics,
 			},
 		},
 		{
@@ -329,7 +365,17 @@ using Order = std::vector<QString>;
 				&st::settingsPremiumIconTranslations,
 				tr::lng_premium_summary_subtitle_translation(),
 				tr::lng_premium_summary_about_translation(),
-				PremiumPreview::RealTimeTranslation,
+				PremiumFeature::RealTimeTranslation,
+			},
+		},
+		{
+			u"business"_q,
+			Entry{
+				&st::settingsPremiumIconBusiness,
+				tr::lng_premium_summary_subtitle_business(),
+				tr::lng_premium_summary_about_business(),
+				PremiumFeature::Business,
+				true,
 			},
 		},
 	};
@@ -870,6 +916,7 @@ void Premium::setStepDataReference(std::any &data) {
 void Premium::setupSubscriptionOptions(
 		not_null<Ui::VerticalLayout*> container) {
 	const auto isEmojiStatus = (!!Ref::EmojiStatus::Parse(_ref));
+	const auto isGift = (!!Ref::Gift::Parse(_ref));
 
 	const auto options = container->add(
 		object_ptr<Ui::SlideWrap<Ui::VerticalLayout>>(
@@ -899,15 +946,19 @@ void Premium::setupSubscriptionOptions(
 	Ui::AddSkip(content, lastSkip - st::defaultVerticalListSkip);
 	Ui::AddSkip(skip->entity(), lastSkip);
 
+	if (isEmojiStatus || isGift) {
+		options->toggle(false, anim::type::instant);
+		skip->toggle(true, anim::type::instant);
+		return;
+	}
 	auto toggleOn = rpl::combine(
 		Data::AmPremiumValue(&_controller->session()),
-		rpl::single(isEmojiStatus),
 		apiPremium->statusTextValue(
 		) | rpl::map([=] {
 			return apiPremium->subscriptionOptions().size() < 2;
 		})
-	) | rpl::map([=](bool premium, bool isEmojiStatus, bool noOptions) {
-		return !premium && !isEmojiStatus && !noOptions;
+	) | rpl::map([=](bool premium, bool noOptions) {
+		return !premium && !noOptions;
 	});
 	options->toggleOn(rpl::duplicate(toggleOn), anim::type::instant);
 	skip->toggleOn(std::move(
@@ -918,187 +969,15 @@ void Premium::setupSubscriptionOptions(
 void Premium::setupContent() {
 	const auto content = Ui::CreateChild<Ui::VerticalLayout>(this);
 
-	const auto &stDefault = st::settingsButton;
-	const auto &stLabel = st::defaultFlatLabel;
-	const auto iconSize = st::settingsPremiumIconDouble.size();
-	const auto &titlePadding = st::settingsPremiumRowTitlePadding;
-	const auto &descriptionPadding = st::settingsPremiumRowAboutPadding;
-
 	setupSubscriptionOptions(content);
 
-	auto entryMap = EntryMap();
-	auto iconContainers = std::vector<Ui::AbstractButton*>();
-	iconContainers.reserve(int(entryMap.size()));
+	auto buttonCallback = [=](PremiumFeature section) {
+		_setPaused(true);
+		const auto hidden = crl::guard(this, [=] { _setPaused(false); });
 
-	const auto addRow = [&](Entry &entry) {
-		const auto labelAscent = stLabel.style.font->ascent;
-		const auto button = Ui::CreateChild<Ui::SettingsButton>(
-			content,
-			rpl::single(QString()));
-
-		const auto label = content->add(
-			object_ptr<Ui::FlatLabel>(
-				content,
-				std::move(entry.title) | rpl::map(Ui::Text::Bold),
-				stLabel),
-			titlePadding);
-		label->setAttribute(Qt::WA_TransparentForMouseEvents);
-		const auto description = content->add(
-			object_ptr<Ui::FlatLabel>(
-				content,
-				std::move(entry.description),
-				st::boxDividerLabel),
-			descriptionPadding);
-		description->setAttribute(Qt::WA_TransparentForMouseEvents);
-
-		const auto badge = entry.newBadge
-			? Ui::CreateChild<Ui::PaddingWrap<Ui::FlatLabel>>(
-				content,
-				object_ptr<Ui::FlatLabel>(
-					content,
-					tr::lng_premium_summary_new_badge(),
-					st::settingsPremiumNewBadge),
-				st::settingsPremiumNewBadgePadding)
-			: nullptr;
-		if (badge) {
-			badge->setAttribute(Qt::WA_TransparentForMouseEvents);
-			badge->paintRequest() | rpl::start_with_next([=] {
-				auto p = QPainter(badge);
-				auto hq = PainterHighQualityEnabler(p);
-				p.setPen(Qt::NoPen);
-				p.setBrush(st::windowBgActive);
-				const auto r = st::settingsPremiumNewBadgePadding.left();
-				p.drawRoundedRect(badge->rect(), r, r);
-			}, badge->lifetime());
-
-			label->geometryValue(
-			) | rpl::start_with_next([=](QRect geometry) {
-				badge->move(st::settingsPremiumNewBadgePosition
-					+ QPoint(label->x() + label->width(), label->y()));
-			}, badge->lifetime());
-		}
-		const auto dummy = Ui::CreateChild<Ui::AbstractButton>(content);
-		dummy->setAttribute(Qt::WA_TransparentForMouseEvents);
-
-		content->sizeValue(
-		) | rpl::start_with_next([=](const QSize &s) {
-			dummy->resize(s.width(), iconSize.height());
-		}, dummy->lifetime());
-
-		label->geometryValue(
-		) | rpl::start_with_next([=](const QRect &r) {
-			dummy->moveToLeft(0, r.y() + (r.height() - labelAscent));
-		}, dummy->lifetime());
-
-		rpl::combine(
-			content->widthValue(),
-			label->heightValue(),
-			description->heightValue()
-		) | rpl::start_with_next([=,
-			topPadding = titlePadding,
-			bottomPadding = descriptionPadding](
-				int width,
-				int topHeight,
-				int bottomHeight) {
-			button->resize(
-				width,
-				topPadding.top()
-					+ topHeight
-					+ topPadding.bottom()
-					+ bottomPadding.top()
-					+ bottomHeight
-					+ bottomPadding.bottom());
-		}, button->lifetime());
-		label->topValue(
-		) | rpl::start_with_next([=, padding = titlePadding.top()](int top) {
-			button->moveToLeft(0, top - padding);
-		}, button->lifetime());
-		const auto arrow = Ui::CreateChild<Ui::IconButton>(
-			button,
-			st::backButton);
-		arrow->setIconOverride(
-			&st::settingsPremiumArrow,
-			&st::settingsPremiumArrowOver);
-		arrow->setAttribute(Qt::WA_TransparentForMouseEvents);
-		button->sizeValue(
-		) | rpl::start_with_next([=](const QSize &s) {
-			const auto &point = st::settingsPremiumArrowShift;
-			arrow->moveToRight(
-				-point.x(),
-				point.y() + (s.height() - arrow->height()) / 2);
-		}, arrow->lifetime());
-
-		const auto section = entry.section;
-		button->setClickedCallback([=, controller = _controller] {
-			_setPaused(true);
-			const auto hidden = crl::guard(this, [=] {
-				_setPaused(false);
-			});
-
-			ShowPremiumPreviewToBuy(controller, section, hidden);
-		});
-
-		iconContainers.push_back(dummy);
+		ShowPremiumPreviewToBuy(_controller, section, hidden);
 	};
-
-	auto icons = std::vector<const style::icon *>();
-	icons.reserve(int(entryMap.size()));
-	{
-		const auto &account = _controller->session().account();
-		const auto mtpOrder = account.appConfig().get<Order>(
-			"premium_promo_order",
-			FallbackOrder());
-		const auto processEntry = [&](Entry &entry) {
-			icons.push_back(entry.icon);
-			addRow(entry);
-		};
-
-		for (const auto &key : mtpOrder) {
-			auto it = entryMap.find(key);
-			if (it == end(entryMap)) {
-				continue;
-			}
-			processEntry(it->second);
-		}
-
-		SendScreenShow(_controller, mtpOrder, _ref);
-	}
-
-	content->resizeToWidth(content->height());
-
-	// Icons.
-	Assert(iconContainers.size() > 2);
-	const auto from = iconContainers.front()->y();
-	const auto to = iconContainers.back()->y() + iconSize.height();
-	auto gradient = QLinearGradient(0, 0, 0, to - from);
-	gradient.setStops(Ui::Premium::FullHeightGradientStops());
-	for (auto i = 0; i < int(icons.size()); i++) {
-		const auto &iconContainer = iconContainers[i];
-
-		const auto pointTop = iconContainer->y() - from;
-		const auto pointBottom = pointTop + iconContainer->height();
-		const auto ratioTop = pointTop / float64(to - from);
-		const auto ratioBottom = pointBottom / float64(to - from);
-
-		auto resultGradient = QLinearGradient(
-			QPointF(),
-			QPointF(0, pointBottom - pointTop));
-
-		resultGradient.setColorAt(
-			.0,
-			anim::gradient_color_at(gradient, ratioTop));
-		resultGradient.setColorAt(
-			.1,
-			anim::gradient_color_at(gradient, ratioBottom));
-
-		const auto brush = QBrush(resultGradient);
-		AddButtonIcon(
-			iconContainer,
-			stDefault,
-			{ .icon = icons[i], .backgroundBrush = brush });
-	}
-
-	Ui::AddSkip(content, descriptionPadding.bottom());
+	AddSummaryPremium(content, _controller, _ref, std::move(buttonCallback));
 #if 0
 	Ui::AddSkip(content);
 	Ui::AddDivider(content);
@@ -1311,7 +1190,7 @@ QPointer<Ui::RpWidget> Premium::createPinnedToBottom(
 		std::move(buttonText),
 		std::nullopt,
 		[=, options = session->api().premium().subscriptionOptions()] {
-			const auto value = _radioGroup->value();
+			const auto value = _radioGroup->current();
 			return (value < options.size() && value >= 0)
 				? options[value].botUrl
 				: QString();
@@ -1388,7 +1267,9 @@ template <>
 struct SectionFactory<Premium> : AbstractSectionFactory {
 	object_ptr<AbstractSection> create(
 		not_null<QWidget*> parent,
-		not_null<Window::SessionController*> controller
+		not_null<Window::SessionController*> controller,
+		not_null<Ui::ScrollArea*> scroll,
+		rpl::producer<Container> containerValue
 	) const final override {
 		return object_ptr<Premium>(parent, controller);
 	}
@@ -1469,7 +1350,7 @@ void StartPremiumPayment(
 	}
 }
 
-QString LookupPremiumRef(PremiumPreview section) {
+QString LookupPremiumRef(PremiumFeature section) {
 	for (const auto &[ref, entry] : EntryMap()) {
 		if (entry.section == section) {
 			return ref;
@@ -1482,12 +1363,29 @@ void ShowPremiumPromoToast(
 		std::shared_ptr<ChatHelpers::Show> show,
 		TextWithEntities textWithLink,
 		const QString &ref) {
+	ShowPremiumPromoToast(show, [=](
+			not_null<Main::Session*> session,
+			ChatHelpers::WindowUsage usage) {
+		Expects(&show->session() == session);
+
+		return show->resolveWindow(usage);
+	}, std::move(textWithLink), ref);
+}
+
+void ShowPremiumPromoToast(
+		std::shared_ptr<Main::SessionShow> show,
+		Fn<Window::SessionController*(
+			not_null<Main::Session*>,
+			ChatHelpers::WindowUsage)> resolveWindow,
+		TextWithEntities textWithLink,
+		const QString &ref) {
 	using WeakToast = base::weak_ptr<Ui::Toast::Instance>;
 	const auto toast = std::make_shared<WeakToast>();
 	(*toast) = show->showToast({
 		.text = std::move(textWithLink),
 		.st = &st::defaultMultilineToast,
 		.duration = Ui::Toast::kDefaultDuration * 2,
+		.adaptive = true,
 		.multiline = true,
 		.filter = crl::guard(&show->session(), [=](
 				const ClickHandlerPtr &,
@@ -1496,7 +1394,8 @@ void ShowPremiumPromoToast(
 				if (const auto strong = toast->get()) {
 					strong->hideAnimated();
 					(*toast) = nullptr;
-					if (const auto controller = show->resolveWindow(
+					if (const auto controller = resolveWindow(
+							&show->session(),
 							ChatHelpers::WindowUsage::PremiumPromo)) {
 						Settings::ShowPremium(controller, ref);
 					}
@@ -1638,7 +1537,7 @@ not_null<Ui::GradientButton*> CreateSubscribeButton(
 	return result;
 }
 
-[[nodiscard]] std::vector<PremiumPreview> PremiumPreviewOrder(
+std::vector<PremiumFeature> PremiumFeaturesOrder(
 		not_null<Main::Session*> session) {
 	const auto mtpOrder = session->account().appConfig().get<Order>(
 		"premium_promo_order",
@@ -1647,36 +1546,199 @@ not_null<Ui::GradientButton*> CreateSubscribeButton(
 		mtpOrder
 	) | ranges::views::transform([](const QString &s) {
 		if (s == u"more_upload"_q) {
-			return PremiumPreview::MoreUpload;
+			return PremiumFeature::MoreUpload;
 		} else if (s == u"faster_download"_q) {
-			return PremiumPreview::FasterDownload;
+			return PremiumFeature::FasterDownload;
 		} else if (s == u"voice_to_text"_q) {
-			return PremiumPreview::VoiceToText;
+			return PremiumFeature::VoiceToText;
 		} else if (s == u"no_ads"_q) {
-			return PremiumPreview::NoAds;
+			return PremiumFeature::NoAds;
 		} else if (s == u"emoji_status"_q) {
-			return PremiumPreview::EmojiStatus;
+			return PremiumFeature::EmojiStatus;
 		} else if (s == u"infinite_reactions"_q) {
-			return PremiumPreview::InfiniteReactions;
+			return PremiumFeature::InfiniteReactions;
+		} else if (s == u"saved_tags"_q) {
+			return PremiumFeature::TagsForMessages;
+		} else if (s == u"last_seen"_q) {
+			return PremiumFeature::LastSeen;
+		} else if (s == u"message_privacy"_q) {
+			return PremiumFeature::MessagePrivacy;
 		} else if (s == u"premium_stickers"_q) {
-			return PremiumPreview::Stickers;
+			return PremiumFeature::Stickers;
 		} else if (s == u"animated_emoji"_q) {
-			return PremiumPreview::AnimatedEmoji;
+			return PremiumFeature::AnimatedEmoji;
 		} else if (s == u"advanced_chat_management"_q) {
-			return PremiumPreview::AdvancedChatManagement;
+			return PremiumFeature::AdvancedChatManagement;
 		} else if (s == u"profile_badge"_q) {
-			return PremiumPreview::ProfileBadge;
+			return PremiumFeature::ProfileBadge;
 		} else if (s == u"animated_userpics"_q) {
-			return PremiumPreview::AnimatedUserpics;
+			return PremiumFeature::AnimatedUserpics;
 		} else if (s == u"translations"_q) {
-			return PremiumPreview::RealTimeTranslation;
+			return PremiumFeature::RealTimeTranslation;
 		} else if (s == u"wallpapers"_q) {
-			return PremiumPreview::Wallpapers;
+			return PremiumFeature::Wallpapers;
 		}
-		return PremiumPreview::kCount;
-	}) | ranges::views::filter([](PremiumPreview type) {
-		return (type != PremiumPreview::kCount);
+		return PremiumFeature::kCount;
+	}) | ranges::views::filter([](PremiumFeature type) {
+		return (type != PremiumFeature::kCount);
 	}) | ranges::to_vector;
+}
+
+void AddSummaryPremium(
+		not_null<Ui::VerticalLayout*> content,
+		not_null<Window::SessionController*> controller,
+		const QString &ref,
+		Fn<void(PremiumFeature)> buttonCallback) {
+	const auto &stDefault = st::settingsButton;
+	const auto &stLabel = st::defaultFlatLabel;
+	const auto iconSize = st::settingsPremiumIconDouble.size();
+	const auto &titlePadding = st::settingsPremiumRowTitlePadding;
+	const auto &descriptionPadding = st::settingsPremiumRowAboutPadding;
+
+	auto entryMap = EntryMap();
+	auto iconContainers = std::vector<Ui::AbstractButton*>();
+	iconContainers.reserve(int(entryMap.size()));
+
+	const auto addRow = [&](Entry &entry) {
+		const auto labelAscent = stLabel.style.font->ascent;
+		const auto button = Ui::CreateChild<Ui::SettingsButton>(
+			content.get(),
+			rpl::single(QString()));
+
+		const auto label = content->add(
+			object_ptr<Ui::FlatLabel>(
+				content,
+				std::move(entry.title) | rpl::map(Ui::Text::Bold),
+				stLabel),
+			titlePadding);
+		label->setAttribute(Qt::WA_TransparentForMouseEvents);
+		const auto description = content->add(
+			object_ptr<Ui::FlatLabel>(
+				content,
+				std::move(entry.description),
+				st::boxDividerLabel),
+			descriptionPadding);
+		description->setAttribute(Qt::WA_TransparentForMouseEvents);
+
+		if (entry.newBadge) {
+			Ui::NewBadge::AddAfterLabel(content, label);
+		}
+		const auto dummy = Ui::CreateChild<Ui::AbstractButton>(content.get());
+		dummy->setAttribute(Qt::WA_TransparentForMouseEvents);
+
+		content->sizeValue(
+		) | rpl::start_with_next([=](const QSize &s) {
+			dummy->resize(s.width(), iconSize.height());
+		}, dummy->lifetime());
+
+		label->geometryValue(
+		) | rpl::start_with_next([=](const QRect &r) {
+			dummy->moveToLeft(0, r.y() + (r.height() - labelAscent));
+		}, dummy->lifetime());
+
+		rpl::combine(
+			content->widthValue(),
+			label->heightValue(),
+			description->heightValue()
+		) | rpl::start_with_next([=,
+			topPadding = titlePadding,
+			bottomPadding = descriptionPadding](
+				int width,
+				int topHeight,
+				int bottomHeight) {
+			button->resize(
+				width,
+				topPadding.top()
+					+ topHeight
+					+ topPadding.bottom()
+					+ bottomPadding.top()
+					+ bottomHeight
+					+ bottomPadding.bottom());
+		}, button->lifetime());
+		label->topValue(
+		) | rpl::start_with_next([=, padding = titlePadding.top()](int top) {
+			button->moveToLeft(0, top - padding);
+		}, button->lifetime());
+		const auto arrow = Ui::CreateChild<Ui::IconButton>(
+			button,
+			st::backButton);
+		arrow->setIconOverride(
+			&st::settingsPremiumArrow,
+			&st::settingsPremiumArrowOver);
+		arrow->setAttribute(Qt::WA_TransparentForMouseEvents);
+		button->sizeValue(
+		) | rpl::start_with_next([=](const QSize &s) {
+			const auto &point = st::settingsPremiumArrowShift;
+			arrow->moveToRight(
+				-point.x(),
+				point.y() + (s.height() - arrow->height()) / 2);
+		}, arrow->lifetime());
+
+		const auto section = entry.section;
+		button->setClickedCallback([=] { buttonCallback(section); });
+
+		iconContainers.push_back(dummy);
+	};
+
+	auto icons = std::vector<const style::icon *>();
+	icons.reserve(int(entryMap.size()));
+	{
+		const auto &account = controller->session().account();
+		const auto mtpOrder = account.appConfig().get<Order>(
+			"premium_promo_order",
+			FallbackOrder());
+		const auto processEntry = [&](Entry &entry) {
+			icons.push_back(entry.icon);
+			addRow(entry);
+		};
+
+		for (const auto &key : mtpOrder) {
+			auto it = entryMap.find(key);
+			if (it == end(entryMap)) {
+				continue;
+			}
+			processEntry(it->second);
+		}
+
+		SendScreenShow(controller, mtpOrder, ref);
+	}
+
+	content->resizeToWidth(content->height());
+
+	// Icons.
+	Assert(iconContainers.size() > 2);
+	const auto from = iconContainers.front()->y();
+	const auto to = iconContainers.back()->y() + iconSize.height();
+	auto gradient = QLinearGradient(0, 0, 0, to - from);
+	gradient.setStops(Ui::Premium::FullHeightGradientStops());
+	for (auto i = 0; i < int(icons.size()); i++) {
+		const auto &iconContainer = iconContainers[i];
+
+		const auto pointTop = iconContainer->y() - from;
+		const auto pointBottom = pointTop + iconContainer->height();
+		const auto ratioTop = pointTop / float64(to - from);
+		const auto ratioBottom = pointBottom / float64(to - from);
+
+		auto resultGradient = QLinearGradient(
+			QPointF(),
+			QPointF(0, pointBottom - pointTop));
+
+		resultGradient.setColorAt(
+			.0,
+			anim::gradient_color_at(gradient, ratioTop));
+		resultGradient.setColorAt(
+			.1,
+			anim::gradient_color_at(gradient, ratioBottom));
+
+		const auto brush = QBrush(resultGradient);
+		AddButtonIcon(
+			iconContainer,
+			stDefault,
+			{ .icon = icons[i], .backgroundBrush = brush });
+	}
+
+	Ui::AddSkip(content, descriptionPadding.bottom());
+
 }
 
 } // namespace Settings

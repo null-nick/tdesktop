@@ -37,6 +37,7 @@ class TabbedSelector;
 struct FileChosen;
 struct PhotoChosen;
 class Show;
+enum class PauseReason;
 } // namespace ChatHelpers
 
 namespace Data {
@@ -83,6 +84,7 @@ namespace HistoryView::Controls {
 class VoiceRecordBar;
 class TTLButton;
 class WebpageProcessor;
+class CharactersLimitLabel;
 } // namespace HistoryView::Controls
 
 namespace HistoryView {
@@ -94,6 +96,8 @@ enum class ComposeControlsMode {
 	Scheduled,
 };
 
+extern const ChatHelpers::PauseReason kDefaultPanelsLevel;
+
 struct ComposeControlsDescriptor {
 	const style::ComposeControls *stOverride = nullptr;
 	std::shared_ptr<ChatHelpers::Show> show;
@@ -103,6 +107,8 @@ struct ComposeControlsDescriptor {
 	Window::SessionController *regularWindow = nullptr;
 	rpl::producer<ChatHelpers::FileChosen> stickerOrEmojiChosen;
 	rpl::producer<QString> customPlaceholder;
+	QWidget *panelsParent = nullptr;
+	ChatHelpers::PauseReason panelsLevel = kDefaultPanelsLevel;
 	QString voiceCustomCancelText;
 	bool voiceLockFromBottom = false;
 	ChatHelpers::ComposeFeatures features;
@@ -136,6 +142,7 @@ public:
 	[[nodiscard]] Main::Session &session() const;
 	void setHistory(SetHistoryArgs &&args);
 	void updateTopicRootId(MsgId topicRootId);
+	void updateShortcutId(BusinessShortcutId shortcutId);
 	void setCurrentDialogsEntryState(Dialogs::EntryState state);
 	[[nodiscard]] PeerData *sendAsPeer() const;
 
@@ -220,12 +227,16 @@ public:
 
 	[[nodiscard]] rpl::producer<bool> lockShowStarts() const;
 	[[nodiscard]] bool isLockPresent() const;
+	[[nodiscard]] bool isTTLButtonShown() const;
 	[[nodiscard]] bool isRecording() const;
 	[[nodiscard]] bool isRecordingPressed() const;
 	[[nodiscard]] rpl::producer<bool> recordingActiveValue() const;
 	[[nodiscard]] rpl::producer<bool> hasSendTextValue() const;
 	[[nodiscard]] rpl::producer<bool> fieldMenuShownValue() const;
 	[[nodiscard]] not_null<Ui::RpWidget*> likeAnimationTarget() const;
+	[[nodiscard]] int fieldCharacterCount() const;
+
+	[[nodiscard]] TextWithEntities prepareTextForEditMsg() const;
 
 	void applyCloudDraft();
 	void applyDraft(
@@ -271,7 +282,7 @@ private:
 	void updateControlsGeometry(QSize size);
 	bool updateReplaceMediaButton();
 	void updateOuterGeometry(QRect rect);
-	void paintBackground(QRect clip);
+	void paintBackground(QPainter &p, QRect full, QRect clip);
 
 	[[nodiscard]] auto computeSendButtonType() const;
 	[[nodiscard]] SendMenu::Type sendMenuType() const;
@@ -295,7 +306,6 @@ private:
 	void setTabbedPanel(std::unique_ptr<ChatHelpers::TabbedPanel> panel);
 
 	bool showRecordButton() const;
-	void drawRestrictedWrite(QPainter &p, const QString &error);
 	bool updateBotCommandShown();
 	bool updateLikeShown();
 
@@ -334,9 +344,12 @@ private:
 	void registerDraftSource();
 	void changeFocusedControl();
 
+	void checkCharsLimitation();
+
 	const style::ComposeControls &_st;
 	const ChatHelpers::ComposeFeatures _features;
 	const not_null<QWidget*> _parent;
+	const not_null<QWidget*> _panelsParent;
 	const std::shared_ptr<ChatHelpers::Show> _show;
 	const not_null<Main::Session*> _session;
 
@@ -347,17 +360,18 @@ private:
 
 	History *_history = nullptr;
 	MsgId _topicRootId = 0;
+	BusinessShortcutId _shortcutId = 0;
 	Fn<bool()> _showSlowmodeError;
 	Fn<Api::SendAction()> _sendActionFactory;
 	rpl::variable<int> _slowmodeSecondsLeft;
 	rpl::variable<bool> _sendDisabledBySlowmode;
 	rpl::variable<bool> _liked;
-	rpl::variable<std::optional<QString>> _writeRestriction;
+	rpl::variable<Controls::WriteRestriction> _writeRestriction;
 	rpl::variable<bool> _hidden;
 	Mode _mode = Mode::Normal;
 
 	const std::unique_ptr<Ui::RpWidget> _wrap;
-	const std::unique_ptr<Ui::RpWidget> _writeRestricted;
+	std::unique_ptr<Ui::RpWidget> _writeRestricted;
 	rpl::event_stream<FullReplyTo> _jumpToItemRequests;
 
 	std::optional<Ui::RoundRect> _backgroundRect;
@@ -373,6 +387,7 @@ private:
 	std::unique_ptr<Ui::SendAsButton> _sendAs;
 	std::unique_ptr<Ui::SilentToggle> _silent;
 	std::unique_ptr<Controls::TTLButton> _ttlInfo;
+	base::unique_qptr<Controls::CharactersLimitLabel> _charsLimitation;
 
 	std::unique_ptr<InlineBots::Layout::Widget> _inlineResults;
 	std::unique_ptr<ChatHelpers::TabbedPanel> _tabbedPanel;
@@ -432,5 +447,10 @@ private:
 	rpl::lifetime _uploaderSubscriptions;
 
 };
+
+[[nodiscard]] rpl::producer<int> SlowmodeSecondsLeft(
+	not_null<PeerData*> peer);
+[[nodiscard]] rpl::producer<bool> SendDisabledBySlowmode(
+	not_null<PeerData*> peer);
 
 } // namespace HistoryView

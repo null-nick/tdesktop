@@ -18,6 +18,9 @@ class SessionController;
 
 namespace Ui {
 class ChatStyle;
+namespace Toast {
+class Instance;
+} // namespace Toast
 } // namespace Ui
 
 namespace Settings {
@@ -109,12 +112,26 @@ public:
 		Exception exception) const override;
 	rpl::producer<QString> exceptionsDescription() const override;
 
+	void handleExceptionsChange(
+		Exception exception,
+		rpl::producer<int> value) override;
+
+	object_ptr<Ui::RpWidget> setupBelowWidget(
+		not_null<Window::SessionController*> controller,
+		not_null<QWidget*> parent,
+		rpl::producer<Option> option) override;
+
 	void confirmSave(
 		bool someAreDisallowed,
 		Fn<void()> saveCallback) override;
 
+	void saveAdditional() override;
+
 private:
 	const not_null<::Main::Session*> _session;
+	rpl::variable<Option> _option;
+	rpl::variable<int> _exceptionsNever;
+	bool _hideReadTime = false;
 
 };
 
@@ -152,7 +169,8 @@ public:
 
 	object_ptr<Ui::RpWidget> setupBelowWidget(
 		not_null<Window::SessionController*> controller,
-		not_null<QWidget*> parent) override;
+		not_null<QWidget*> parent,
+		rpl::producer<Option> option) override;
 
 };
 
@@ -265,8 +283,16 @@ public:
 	rpl::producer<QString> exceptionBoxTitle(
 		Exception exception) const override;
 	rpl::producer<QString> exceptionsDescription() const override;
+	object_ptr<Ui::RpWidget> setupBelowWidget(
+		not_null<Window::SessionController*> controller,
+		not_null<QWidget*> parent,
+		rpl::producer<Option> option) override;
+	Fn<void()> premiumClickedCallback(
+		Option option,
+		not_null<Window::SessionController*> controller) override;
 
 private:
+	base::weak_ptr<Ui::Toast::Instance> _toastInstance;
 	rpl::lifetime _lifetime;
 
 };

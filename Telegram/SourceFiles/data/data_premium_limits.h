@@ -59,6 +59,10 @@ public:
 
 	[[nodiscard]] int topicsPinnedCurrent() const;
 
+	[[nodiscard]] int savedSublistsPinnedDefault() const;
+	[[nodiscard]] int savedSublistsPinnedPremium() const;
+	[[nodiscard]] int savedSublistsPinnedCurrent() const;
+
 	[[nodiscard]] int channelsPublicDefault() const;
 	[[nodiscard]] int channelsPublicPremium() const;
 	[[nodiscard]] int channelsPublicCurrent() const;
@@ -83,6 +87,28 @@ private:
 		int fallback) const;
 	[[nodiscard]] bool isPremium() const;
 
+	const not_null<Main::Session*> _session;
+
+};
+
+class LevelLimits final {
+public:
+	LevelLimits(not_null<Main::Session*> session);
+
+	[[nodiscard]] int channelColorLevelMin() const;
+	[[nodiscard]] int channelBgIconLevelMin() const;
+	[[nodiscard]] int channelProfileBgIconLevelMin() const;
+	[[nodiscard]] int channelEmojiStatusLevelMin() const;
+	[[nodiscard]] int channelWallpaperLevelMin() const;
+	[[nodiscard]] int channelCustomWallpaperLevelMin() const;
+	[[nodiscard]] int groupTranscribeLevelMin() const;
+	[[nodiscard]] int groupEmojiStickersLevelMin() const;
+	[[nodiscard]] int groupProfileBgIconLevelMin() const;
+	[[nodiscard]] int groupEmojiStatusLevelMin() const;
+	[[nodiscard]] int groupWallpaperLevelMin() const;
+	[[nodiscard]] int groupCustomWallpaperLevelMin() const;
+
+private:
 	const not_null<Main::Session*> _session;
 
 };

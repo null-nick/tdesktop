@@ -55,17 +55,17 @@ public:
 		});
 	}
 
-	void open_(GFile **files, int n_files, const char*) noexcept override {
-		Core::Sandbox::Instance().customEnterFromEventLoop([&] {
-			for (int i = 0; i < n_files; ++i) {
-				QFileOpenEvent e(
-					QUrl(QString::fromUtf8(g_file_get_uri(files[i]))));
-				QGuiApplication::sendEvent(qApp, &e);
-			}
-		});
+	void open_(
+			gi::Collection<gi::DSpan, ::GFile*, gi::transfer_none_t> files,
+			const gi::cstring_v hint) noexcept override {
+		for (auto file : files) {
+			QFileOpenEvent e(QUrl(QString::fromStdString(file.get_uri())));
+			QGuiApplication::sendEvent(qApp, &e);
+		}
 	}
 
-	void add_platform_data_(GLib::VariantBuilder builder) noexcept override {
+	void add_platform_data_(
+			GLib::VariantBuilder_Ref builder) noexcept override {
 		if (Platform::IsWayland()) {
 			const auto token = qgetenv("XDG_ACTIVATION_TOKEN");
 			if (!token.isEmpty()) {
@@ -113,8 +113,7 @@ Application::Application()
 				Glib::create_variant(
 					NotificationId().toTuple()
 				).get_type().gobj_copy(),
-				gi::transfer_full,
-				gi::direction_out
+				gi::transfer_full
 			);
 		} catch (...) {
 			return GLib::VariantType();
@@ -181,7 +180,7 @@ gi::ref_ptr<Application> MakeApplication() {
 	return result;
 }
 
-class LinuxIntegration final : public Integration {
+class LinuxIntegration final : public Integration, public base::has_weak_ptr {
 public:
 	LinuxIntegration();
 
@@ -201,13 +200,6 @@ private:
 
 LinuxIntegration::LinuxIntegration()
 : _application(MakeApplication())
-, _inhibitProxy(
-	XdpInhibit::InhibitProxy::new_for_bus_sync(
-		Gio::BusType::SESSION_,
-		Gio::DBusProxyFlags::DO_NOT_AUTO_START_AT_CONSTRUCTION_,
-		base::Platform::XDP::kService,
-		base::Platform::XDP::kObjectPath,
-		nullptr))
 , _darkModeWatcher(
 	"org.freedesktop.appearance",
 	"color-scheme",
@@ -231,7 +223,18 @@ LinuxIntegration::LinuxIntegration()
 }
 
 void LinuxIntegration::init() {
-	initInhibit();
+	XdpInhibit::InhibitProxy::new_for_bus(
+		Gio::BusType::SESSION_,
+		Gio::DBusProxyFlags::NONE_,
+		base::Platform::XDP::kService,
+		base::Platform::XDP::kObjectPath,
+		crl::guard(this, [=](GObject::Object, Gio::AsyncResult res) {
+			_inhibitProxy = XdpInhibit::InhibitProxy::new_for_bus_finish(
+				res,
+				nullptr);
+
+			initInhibit();
+		}));
 }
 
 void LinuxIntegration::initInhibit() {
@@ -239,11 +242,7 @@ void LinuxIntegration::initInhibit() {
 		return;
 	}
 
-	auto uniqueName = _inhibitProxy
-		.get_connection()
-		.get_unique_name()
-		.value_or("");
-
+	std::string uniqueName = _inhibitProxy.get_connection().get_unique_name();
 	uniqueName.erase(0, 1);
 	uniqueName.replace(uniqueName.find('.'), 1, 1, '_');
 
@@ -253,7 +252,8 @@ void LinuxIntegration::initInhibit() {
 	const auto sessionHandleToken = "tdesktop"
 		+ std::to_string(base::RandomValue<uint>());
 
-	const auto sessionHandle = "/org/freedesktop/portal/desktop/session/"
+	const auto sessionHandle = base::Platform::XDP::kObjectPath
+		+ std::string("/session/")
 		+ uniqueName
 		+ '/'
 		+ sessionHandleToken;
@@ -277,20 +277,18 @@ void LinuxIntegration::initInhibit() {
 		);
 	});
 
-	const auto options = std::array{
-		GLib::Variant::new_dict_entry(
-			GLib::Variant::new_string("handle_token"),
-			GLib::Variant::new_variant(
-				GLib::Variant::new_string(handleToken))),
-		GLib::Variant::new_dict_entry(
-			GLib::Variant::new_string("session_handle_token"),
-			GLib::Variant::new_variant(
-				GLib::Variant::new_string(sessionHandleToken))),
-	};
-
 	inhibit().call_create_monitor(
-		{},
-		GLib::Variant::new_array(options.data(), options.size()),
+		"",
+		GLib::Variant::new_array({
+			GLib::Variant::new_dict_entry(
+				GLib::Variant::new_string("handle_token"),
+				GLib::Variant::new_variant(
+					GLib::Variant::new_string(handleToken))),
+			GLib::Variant::new_dict_entry(
+				GLib::Variant::new_string("session_handle_token"),
+				GLib::Variant::new_variant(
+					GLib::Variant::new_string(sessionHandleToken))),
+		}),
 		nullptr);
 }
 

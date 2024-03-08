@@ -20,6 +20,7 @@ class History;
 class HistoryBlock;
 class HistoryTranslation;
 class HistoryItem;
+struct HistoryItemCommonFields;
 struct HistoryMessageMarkupData;
 class HistoryMainElementDelegateMixin;
 struct LanguageId;
@@ -127,11 +128,23 @@ public:
 	void applyGroupAdminChanges(const base::flat_set<UserId> &changes);
 
 	template <typename ...Args>
-	not_null<HistoryItem*> makeMessage(Args &&...args) {
+	not_null<HistoryItem*> makeMessage(MsgId id, Args &&...args) {
 		return static_cast<HistoryItem*>(
 			insertItem(
 				std::make_unique<HistoryItem>(
 					this,
+					id,
+					std::forward<Args>(args)...)).get());
+	}
+	template <typename ...Args>
+	not_null<HistoryItem*> makeMessage(
+			HistoryItemCommonFields &&fields,
+			Args &&...args) {
+		return static_cast<HistoryItem*>(
+			insertItem(
+				std::make_unique<HistoryItem>(
+					this,
+					std::move(fields),
 					std::forward<Args>(args)...)).get());
 	}
 
@@ -143,62 +156,30 @@ public:
 
 	not_null<HistoryItem*> addNewMessage(
 		MsgId id,
-		const MTPMessage &msg,
+		const MTPMessage &message,
 		MessageFlags localFlags,
 		NewMessageType type);
+
 	not_null<HistoryItem*> addNewLocalMessage(
-		MsgId id,
-		MessageFlags flags,
-		UserId viaBotId,
-		FullReplyTo replyTo,
-		TimeId date,
-		PeerId from,
-		const QString &postAuthor,
+		HistoryItemCommonFields &&fields,
 		const TextWithEntities &text,
-		const MTPMessageMedia &media,
-		HistoryMessageMarkupData &&markup,
-		uint64 groupedId = 0);
+		const MTPMessageMedia &media);
 	not_null<HistoryItem*> addNewLocalMessage(
-		MsgId id,
-		MessageFlags flags,
-		TimeId date,
-		PeerId from,
-		const QString &postAuthor,
-		not_null<HistoryItem*> forwardOriginal,
-		MsgId topicRootId);
+		HistoryItemCommonFields &&fields,
+		not_null<HistoryItem*> forwardOriginal);
 	not_null<HistoryItem*> addNewLocalMessage(
-		MsgId id,
-		MessageFlags flags,
-		UserId viaBotId,
-		FullReplyTo replyTo,
-		TimeId date,
-		PeerId from,
-		const QString &postAuthor,
+		HistoryItemCommonFields &&fields,
 		not_null<DocumentData*> document,
-		const TextWithEntities &caption,
-		HistoryMessageMarkupData &&markup);
+		const TextWithEntities &caption);
 	not_null<HistoryItem*> addNewLocalMessage(
-		MsgId id,
-		MessageFlags flags,
-		UserId viaBotId,
-		FullReplyTo replyTo,
-		TimeId date,
-		PeerId from,
-		const QString &postAuthor,
+		HistoryItemCommonFields &&fields,
 		not_null<PhotoData*> photo,
-		const TextWithEntities &caption,
-		HistoryMessageMarkupData &&markup);
+		const TextWithEntities &caption);
 	not_null<HistoryItem*> addNewLocalMessage(
-		MsgId id,
-		MessageFlags flags,
-		UserId viaBotId,
-		FullReplyTo replyTo,
-		TimeId date,
-		PeerId from,
-		const QString &postAuthor,
-		not_null<GameData*> game,
-		HistoryMessageMarkupData &&markup);
-	not_null<HistoryItem*> addNewLocalMessage(
+		HistoryItemCommonFields &&fields,
+		not_null<GameData*> game);
+
+	not_null<HistoryItem*> addSponsoredMessage(
 		MsgId id,
 		Data::SponsoredFrom from,
 		const TextWithEntities &textWithEntities); // sponsored
@@ -365,6 +346,7 @@ public:
 	void takeLocalDraft(not_null<History*> from);
 	void applyCloudDraft(MsgId topicRootId);
 	void draftSavedToCloud(MsgId topicRootId);
+	void requestChatListMessage();
 
 	[[nodiscard]] const Data::ForwardDraft &forwardDraft(
 		MsgId topicRootId) const;
@@ -383,9 +365,9 @@ public:
 	Dialogs::BadgesState chatListBadgesState() const override;
 	HistoryItem *chatListMessage() const override;
 	bool chatListMessageKnown() const override;
-	void requestChatListMessage() override;
 	const QString &chatListName() const override;
 	const QString &chatListNameSortKey() const override;
+	int chatListNameVersion() const override;
 	const base::flat_set<QString> &chatListNameWords() const override;
 	const base::flat_set<QChar> &chatListFirstLetters() const override;
 	void chatListPreloadData() override;
@@ -588,8 +570,6 @@ private:
 		Dialogs::BadgesState state) const;
 	[[nodiscard]] Dialogs::UnreadState computeUnreadState() const;
 	void setFolderPointer(Data::Folder *folder);
-
-	int chatListNameVersion() const override;
 
 	void hasUnreadMentionChanged(bool has) override;
 	void hasUnreadReactionChanged(bool has) override;

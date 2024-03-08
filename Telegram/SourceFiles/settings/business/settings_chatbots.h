@@ -7,12 +7,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #pragma once
 
-namespace Platform {
-namespace Audio {
+#include "settings/settings_type.h"
 
-void Init();
-void DeInit();
+namespace Settings {
 
-} // namespace Audio
-} // namespace Platform
+[[nodiscard]] Type ChatbotsId();
 
+} // namespace Settings
