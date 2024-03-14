@@ -516,6 +516,7 @@ QByteArray Parser::block(
 	const auto id = Number(photo.id);
 	result = tag("a", {
 		{ "href", href },
+		{ "oncontextmenu", data.vurl() ? QByteArray() : "return false;" },
 		{ "data-context", data.vurl() ? QByteArray() : "viewer-photo" + id },
 	}, result) + caption(data.vcaption());
 	return result;
@@ -529,7 +530,6 @@ QByteArray Parser::block(
 	const auto collage = !layout.geometry.isEmpty();
 	const auto collageSmall = collage
 		&& (layout.geometry.width() < outer.width());
-	const auto slideshow = !collage && !outer.isEmpty();
 	const auto video = documentById(data.vvideo_id().v);
 	if (!video.id) {
 		return "Video not found.";
@@ -577,6 +577,7 @@ QByteArray Parser::block(
 		const auto href = resource("video" + id);
 		result = tag("a", {
 			{ "href", href },
+			{ "oncontextmenu", "return false;" },
 			{ "data-context", "viewer-video" + id },
 		}, result);
 	}
@@ -746,6 +747,7 @@ QByteArray Parser::block(const MTPDpageBlockAudio &data) {
 	const auto src = documentFullUrl(audio);
 	return tag("figure", tag("audio", {
 		{ "src", src },
+		{ "oncontextmenu", "return false;" },
 		{ "controls", std::nullopt },
 	}) + caption(data.vcaption()));
 }
@@ -1154,7 +1156,6 @@ QByteArray Parser::embedUrl(const QByteArray &html) {
 	};
 	auto result = QByteArray();
 	result.reserve(binary.size() * 2);
-	auto index = 0;
 	for (const auto byte : binary) {
 		result.push_back(hex(byte / 16));
 		result.push_back(hex(byte % 16));
