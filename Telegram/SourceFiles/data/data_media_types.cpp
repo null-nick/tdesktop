@@ -22,6 +22,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/view/media/history_view_game.h"
 #include "history/view/media/history_view_giveaway.h"
 #include "history/view/media/history_view_invoice.h"
+#include "history/view/media/history_view_media_generic.h"
 #include "history/view/media/history_view_call.h"
 #include "history/view/media/history_view_web_page.h"
 #include "history/view/media/history_view_poll.h"
@@ -1856,23 +1857,21 @@ TextWithEntities MediaPoll::notificationText() const {
 }
 
 QString MediaPoll::pinnedTextSubstring() const {
-	return QChar(171) + _poll->question + QChar(187);
+	return QChar(171) + _poll->question.text + QChar(187);
 }
 
 TextForMimeData MediaPoll::clipboardText() const {
-	const auto text = u"[ "_q
-		+ tr::lng_in_dlg_poll(tr::now)
-		+ u" : "_q
-		+ _poll->question
-		+ u" ]"_q
-		+ ranges::accumulate(
-			ranges::views::all(
-				_poll->answers
-			) | ranges::views::transform([](const PollAnswer &answer) {
-				return "\n- " + answer.text;
-			}),
-			QString());
-	return TextForMimeData::Simple(text);
+	auto result = TextWithEntities();
+	result
+		.append(u"[ "_q)
+		.append(tr::lng_in_dlg_poll(tr::now))
+		.append(u" : "_q)
+		.append(_poll->question)
+		.append(u" ]"_q);
+	for (const auto &answer : _poll->answers) {
+		result.append(u"\n- "_q).append(answer.text);
+	}
+	return TextForMimeData::Rich(std::move(result));
 }
 
 bool MediaPoll::updateInlineResultMedia(const MTPMessageMedia &media) {
@@ -2321,7 +2320,7 @@ std::unique_ptr<HistoryView::Media> MediaGiveawayStart::createView(
 		not_null<HistoryView::Element*> message,
 		not_null<HistoryItem*> realParent,
 		HistoryView::Element *replacing) {
-	return std::make_unique<HistoryView::MediaInBubble>(
+	return std::make_unique<HistoryView::MediaGeneric>(
 		message,
 		HistoryView::GenerateGiveawayStart(message, &_data));
 }
@@ -2370,7 +2369,7 @@ std::unique_ptr<HistoryView::Media> MediaGiveawayResults::createView(
 		not_null<HistoryView::Element*> message,
 		not_null<HistoryItem*> realParent,
 		HistoryView::Element *replacing) {
-	return std::make_unique<HistoryView::MediaInBubble>(
+	return std::make_unique<HistoryView::MediaGeneric>(
 		message,
 		HistoryView::GenerateGiveawayResults(message, &_data));
 }

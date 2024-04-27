@@ -49,7 +49,6 @@ jobs:
         defines:
           - ""
           - "DESKTOP_APP_DISABLE_X11_INTEGRATION"
-          - "DESKTOP_APP_DISABLE_WAYLAND_INTEGRATION"
 
     env:
       UPLOAD_ARTIFACT: "true"
@@ -115,8 +114,8 @@ jobs:
         if: env.UPLOAD_ARTIFACT == 'true'
         run: |
           cd $REPO_NAME/out/Debug
-          mkdir artifact
-          mv {Telegram,Updater} artifact/
+          sudo mkdir artifact
+          sudo mv {Telegram,Updater} artifact/
       - uses: actions/upload-artifact@master
         if: env.UPLOAD_ARTIFACT == 'true'
         name: Upload artifact.

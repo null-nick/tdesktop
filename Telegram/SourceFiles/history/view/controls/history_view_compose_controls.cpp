@@ -1973,6 +1973,7 @@ void ComposeControls::applyDraft(FieldHistoryAction fieldHistoryAction) {
 	const auto guard = gsl::finally([&] {
 		updateSendButtonType();
 		updateReplaceMediaButton();
+		updateFieldPlaceholder();
 		updateControlsVisibility();
 		updateControlsGeometry(_wrap->size());
 	});
@@ -2182,7 +2183,7 @@ void ComposeControls::initSendButton() {
 		_send.get(),
 		[=] { return sendButtonMenuType(); },
 		SendMenu::DefaultSilentCallback(send),
-		SendMenu::DefaultScheduleCallback(_wrap.get(), sendMenuType(), send),
+		SendMenu::DefaultScheduleCallback(_show, sendMenuType(), send),
 		SendMenu::DefaultWhenOnlineCallback(send));
 }
 
@@ -2857,9 +2858,12 @@ void ComposeControls::updateHeight() {
 	}
 }
 
-void ComposeControls::editMessage(FullMsgId id) {
+void ComposeControls::editMessage(
+		FullMsgId id,
+		const TextSelection &selection) {
 	if (const auto item = session().data().message(id)) {
 		editMessage(item);
+		SelectTextInFieldWithMargins(_field, selection);
 	}
 }
 

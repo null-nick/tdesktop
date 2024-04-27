@@ -9,7 +9,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "main/main_session.h"
 #include "main/main_session_settings.h"
-#include "main/main_account.h"
 #include "main/main_app_config.h"
 #include "apiwrap.h"
 #include "mainwidget.h"
@@ -41,6 +40,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/business/data_business_chatbots.h"
 #include "data/business/data_business_info.h"
 #include "data/business/data_shortcut_messages.h"
+#include "data/components/scheduled_messages.h"
+#include "data/components/sponsored_messages.h"
 #include "data/stickers/data_stickers.h"
 #include "data/notify/data_notify_settings.h"
 #include "data/data_bot_app.h"
@@ -57,9 +58,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_poll.h"
 #include "data/data_replies_list.h"
 #include "data/data_chat_filters.h"
-#include "data/data_scheduled_messages.h"
 #include "data/data_send_action.h"
-#include "data/data_sponsored_messages.h"
 #include "data/data_message_reactions.h"
 #include "data/data_emoji_statuses.h"
 #include "data/data_forum_icons.h"
@@ -242,7 +241,7 @@ Session::Session(not_null<Main::Session*> session)
 , _bigFileCache(Core::App().databases().get(
 	_session->local().cacheBigFilePath(),
 	_session->local().cacheBigFileSettings()))
-, _groupFreeTranscribeLevel(session->account().appConfig().value(
+, _groupFreeTranscribeLevel(session->appConfig().value(
 ) | rpl::map([limits = Data::LevelLimits(session)] {
 	return limits.groupTranscribeLevelMin();
 }))
@@ -273,9 +272,7 @@ Session::Session(not_null<Main::Session*> session)
 , _savedMessages(std::make_unique<SavedMessages>(this))
 , _chatbots(std::make_unique<Chatbots>(this))
 , _businessInfo(std::make_unique<BusinessInfo>(this))
-, _scheduledMessages(std::make_unique<ScheduledMessages>(this))
-, _shortcutMessages(std::make_unique<ShortcutMessages>(this))
-, _sponsoredMessages(std::make_unique<SponsoredMessages>(this)) {
+, _shortcutMessages(std::make_unique<ShortcutMessages>(this)) {
 	_cache->open(_session->local().cacheKey());
 	_bigFileCache->open(_session->local().cacheBigFileKey());
 
@@ -398,9 +395,9 @@ void Session::clear() {
 	_sendActionManager->clear();
 
 	_histories->unloadAll();
-	_scheduledMessages = nullptr;
 	_shortcutMessages = nullptr;
-	_sponsoredMessages = nullptr;
+	_session->scheduledMessages().clear();
+	_session->sponsoredMessages().clear();
 	_dependentMessages.clear();
 	base::take(_messages);
 	base::take(_nonChannelMessages);
@@ -722,6 +719,7 @@ not_null<UserData*> Session::processUser(const MTPUser &data) {
 					result->botInfo->inlinePlaceholder = QString();
 				}
 				result->botInfo->supportsAttachMenu = data.is_bot_attach_menu();
+				result->botInfo->supportsBusiness = data.is_bot_business();
 				result->botInfo->canEditInformation = data.is_bot_can_edit();
 			} else {
 				result->setBotInfoVersion(-1);
@@ -751,8 +749,10 @@ not_null<UserData*> Session::processUser(const MTPUser &data) {
 		result->setLoadedStatus(PeerData::LoadedStatus::Normal);
 	}
 
-	if (status && !minimal) {
-		const auto lastseen = LastseenFromMTP(*status, result->lastseen());
+	if (!minimal) {
+		const auto lastseen = status
+			? LastseenFromMTP(*status, result->lastseen())
+			: Data::LastseenStatus::LongAgo(false);
 		if (result->updateLastseen(lastseen)) {
 			flags |= UpdateFlag::OnlineStatus;
 		}
@@ -1230,7 +1230,7 @@ PeerData *Session::peerByUsername(const QString &username) const {
 	const auto uname = username.trimmed();
 	for (const auto &[peerId, peer] : _peers) {
 		if (peer->isLoaded()
-			&& !peer->userName().compare(uname, Qt::CaseInsensitive)) {
+			&& !peer->username().compare(uname, Qt::CaseInsensitive)) {
 			return peer.get();
 		}
 	}
@@ -1678,6 +1678,20 @@ bool Session::queryItemVisibility(not_null<HistoryItem*> item) const {
 	_itemVisibilityQueries.fire({ item, &result });
 	return result;
 }
+
+bool Session::queryDocumentVisibility(
+		not_null<DocumentData*> document) const {
+	const auto i = _documentItems.find(document);
+	if (i != end(_documentItems)) {
+		for (const auto &item : i->second) {
+			if (queryItemVisibility(item)) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
 
 [[nodiscard]] auto Session::itemVisibilityQueries() const
 -> rpl::producer<Session::ItemVisibilityQuery> {
@@ -2190,7 +2204,7 @@ rpl::producer<int> Session::maxPinnedChatsLimitValue(
 	// We always use premium limit in the MainList limit producer,
 	// because it slices the list to that limit. We don't want to slice
 	// premium-ly added chats from the pinned list because of sync issues.
-	return _session->account().appConfig().value(
+	return _session->appConfig().value(
 	) | rpl::map([folder, limits = Data::PremiumLimits(_session)] {
 		return folder
 			? limits.dialogsFolderPinnedPremium()
@@ -2204,7 +2218,7 @@ rpl::producer<int> Session::maxPinnedChatsLimitValue(
 	// We always use premium limit in the MainList limit producer,
 	// because it slices the list to that limit. We don't want to slice
 	// premium-ly added chats from the pinned list because of sync issues.
-	return _session->account().appConfig().value(
+	return _session->appConfig().value(
 	) | rpl::map([limits = Data::PremiumLimits(_session)] {
 		return limits.dialogFiltersChatsPremium();
 	});
@@ -2212,7 +2226,7 @@ rpl::producer<int> Session::maxPinnedChatsLimitValue(
 
 rpl::producer<int> Session::maxPinnedChatsLimitValue(
 		not_null<Data::Forum*> forum) const {
-	return _session->account().appConfig().value(
+	return _session->appConfig().value(
 	) | rpl::map([limits = Data::PremiumLimits(_session)] {
 		return limits.topicsPinnedCurrent();
 	});
@@ -2224,7 +2238,7 @@ rpl::producer<int> Session::maxPinnedChatsLimitValue(
 	// We always use premium limit in the MainList limit producer,
 	// because it slices the list to that limit. We don't want to slice
 	// premium-ly added chats from the pinned list because of sync issues.
-	return _session->account().appConfig().value(
+	return _session->appConfig().value(
 	) | rpl::map([limits = Data::PremiumLimits(_session)] {
 		return limits.savedSublistsPinnedPremium();
 	});
@@ -3367,6 +3381,7 @@ not_null<WebPageData*> Session::processWebpage(
 		nullptr,
 		WebPageCollage(),
 		nullptr,
+		nullptr,
 		0,
 		QString(),
 		false,
@@ -3392,6 +3407,7 @@ not_null<WebPageData*> Session::webpage(
 		nullptr,
 		WebPageCollage(),
 		nullptr,
+		nullptr,
 		0,
 		QString(),
 		false,
@@ -3410,6 +3426,7 @@ not_null<WebPageData*> Session::webpage(
 		DocumentData *document,
 		WebPageCollage &&collage,
 		std::unique_ptr<Iv::Data> iv,
+		std::unique_ptr<WebPageStickerSet> stickerSet,
 		int duration,
 		const QString &author,
 		bool hasLargeMedia,
@@ -3428,6 +3445,7 @@ not_null<WebPageData*> Session::webpage(
 		document,
 		std::move(collage),
 		std::move(iv),
+		std::move(stickerSet),
 		duration,
 		author,
 		hasLargeMedia,
@@ -3468,10 +3486,35 @@ void Session::webpageApplyFields(
 				const auto result = attribute.match([&](
 						const MTPDwebPageAttributeTheme &data) {
 					return lookupInAttribute(data);
-				}, [&](const MTPDwebPageAttributeStory &data) {
+				}, [](const MTPDwebPageAttributeStory &) {
+					return (DocumentData*)nullptr;
+				}, [](const MTPDwebPageAttributeStickerSet &) {
 					return (DocumentData*)nullptr;
 				});
 				if (result) {
+					return result;
+				}
+			}
+		}
+		return nullptr;
+	};
+	using WebPageStickerSetPtr = std::unique_ptr<WebPageStickerSet>;
+	const auto lookupStickerSet = [&]() -> WebPageStickerSetPtr {
+		if (const auto attributes = data.vattributes()) {
+			for (const auto &attribute : attributes->v) {
+				auto result = attribute.match([&](
+						const MTPDwebPageAttributeStickerSet &data) {
+					auto result = std::make_unique<WebPageStickerSet>();
+					result->isEmoji = data.is_emojis();
+					result->isTextColor = data.is_text_color();
+					for (const auto &tl : data.vstickers().v) {
+						result->items.push_back(processDocument(tl));
+					}
+					return result;
+				}, [](const auto &) {
+					return WebPageStickerSetPtr(nullptr);
+				});
+				if (result && !result->items.empty()) {
 					return result;
 				}
 			}
@@ -3569,6 +3612,7 @@ void Session::webpageApplyFields(
 			: lookupThemeDocument()),
 		WebPageCollage(this, data),
 		std::move(iv),
+		lookupStickerSet(),
 		data.vduration().value_or_empty(),
 		qs(data.vauthor().value_or_empty()),
 		data.is_has_large_media(),
@@ -3588,6 +3632,7 @@ void Session::webpageApplyFields(
 		DocumentData *document,
 		WebPageCollage &&collage,
 		std::unique_ptr<Iv::Data> iv,
+		std::unique_ptr<WebPageStickerSet> stickerSet,
 		int duration,
 		const QString &author,
 		bool hasLargeMedia,
@@ -3605,6 +3650,7 @@ void Session::webpageApplyFields(
 		document,
 		std::move(collage),
 		std::move(iv),
+		std::move(stickerSet),
 		duration,
 		author,
 		hasLargeMedia,
@@ -4509,6 +4555,7 @@ void Session::insertCheckedServiceNotification(
 				MTPPeer(), // saved_peer_id
 				MTPMessageFwdHeader(),
 				MTPlong(), // via_bot_id
+				MTPlong(), // via_business_bot_id
 				MTPMessageReplyHeader(),
 				MTP_int(date),
 				MTP_string(sending.text),

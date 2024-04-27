@@ -44,6 +44,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "api/api_updates.h"
 #include "calls/calls_instance.h"
 #include "countries/countries_manager.h"
+#include "iv/iv_delegate_impl.h"
 #include "iv/iv_instance.h"
 #include "lang/lang_file_parser.h"
 #include "lang/lang_translator.h"
@@ -163,7 +164,8 @@ Application::Application()
 , _domain(std::make_unique<Main::Domain>(cDataFile()))
 , _exportManager(std::make_unique<Export::Manager>())
 , _calls(std::make_unique<Calls::Instance>())
-, _iv(std::make_unique<Iv::Instance>())
+, _iv(std::make_unique<Iv::Instance>(
+	Ui::CreateChild<Iv::DelegateImpl>(this)))
 , _langpack(std::make_unique<Lang::Instance>())
 , _langCloudManager(std::make_unique<Lang::CloudManager>(langpack()))
 , _emojiKeywords(std::make_unique<ChatHelpers::EmojiKeywords>())
@@ -241,21 +243,19 @@ Application::~Application() {
 	Media::Player::finish(_audio.get());
 	style::stopManager();
 
-	ThirdParty::finish();
-
 	Instance = nullptr;
 }
 
 void Application::run() {
-	style::internal::StartFonts();
-
-	ThirdParty::start();
-
 	// Depends on OpenSSL on macOS, so on ThirdParty::start().
 	// Depends on notifications settings.
 	_notifications = std::make_unique<Window::Notifications::System>();
 
 	startLocalStorage();
+
+	style::SetCustomFont(settings().customFontFamily());
+	style::internal::StartFonts();
+
 	ValidateScale();
 
 	refreshGlobalProxy(); // Depends on app settings being read.
@@ -931,8 +931,8 @@ void Application::handleAppDeactivated() {
 }
 
 rpl::producer<bool> Application::appDeactivatedValue() const {
-	const auto &app =
-		static_cast<QGuiApplication*>(QCoreApplication::instance());
+	const auto &app
+		= static_cast<QGuiApplication*>(QCoreApplication::instance());
 	return rpl::single(
 		app->applicationState()
 	) | rpl::then(
@@ -1368,6 +1368,25 @@ Window::Controller *Application::windowFor(
 	return activePrimaryWindow();
 }
 
+Window::Controller *Application::findWindow(
+		not_null<QWidget*> widget) const {
+	const auto window = widget->window();
+	if (_lastActiveWindow && _lastActiveWindow->widget() == window) {
+		return _lastActiveWindow;
+	}
+	for (const auto &[account, primary] : _primaryWindows) {
+		if (primary->widget() == window) {
+			return primary.get();
+		}
+	}
+	for (const auto &[history, secondary] : _secondaryWindows) {
+		if (secondary->widget() == window) {
+			return secondary.get();
+		}
+	}
+	return nullptr;
+}
+
 Window::Controller *Application::activeWindow() const {
 	return _lastActiveWindow;
 }
@@ -1504,14 +1523,14 @@ void Application::closeChatFromWindows(not_null<PeerData*> peer) {
 		}
 	}
 	if (const auto window = windowFor(&peer->account())) {
-		const auto primary = window->sessionController();
-		if ((primary->activeChatCurrent().peer() == peer)
-			&& (&primary->session() == &peer->session())) {
-			primary->clearSectionStack();
-		}
-		if (const auto forum = primary->shownForum().current()) {
-			if (peer->forum() == forum) {
-				primary->closeForum();
+		if (const auto primary = window->sessionController()) {
+			if (primary->activeChatCurrent().peer() == peer) {
+				primary->clearSectionStack();
+			}
+			if (const auto forum = primary->shownForum().current()) {
+				if (peer->forum() == forum) {
+					primary->closeForum();
+				}
 			}
 		}
 	}

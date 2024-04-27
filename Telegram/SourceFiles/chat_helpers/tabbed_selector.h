@@ -79,12 +79,14 @@ using InlineChosen = InlineBots::ResultSelected;
 enum class TabbedSelectorMode {
 	Full,
 	EmojiOnly,
+	StickersOnly,
 	MediaEditor,
 	EmojiStatus,
 	ChannelStatus,
 	BackgroundEmoji,
 	FullReactions,
 	RecentReactions,
+	PeerTitle,
 };
 
 struct TabbedSelectorDescriptor {

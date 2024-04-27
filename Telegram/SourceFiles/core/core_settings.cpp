@@ -134,6 +134,8 @@ QByteArray Settings::serialize() const {
 	LogPosition(_windowPosition, u"Window"_q);
 	const auto mediaViewPosition = Serialize(_mediaViewPosition);
 	LogPosition(_mediaViewPosition, u"Viewer"_q);
+	const auto ivPosition = Serialize(_ivPosition);
+	LogPosition(_ivPosition, u"IV"_q);
 	const auto proxy = _proxy.serialize();
 	const auto skipLanguages = _skipTranslationLanguages.current();
 
@@ -154,6 +156,10 @@ QByteArray Settings::serialize() const {
 	const auto &recentEmojiPreloadData = _recentEmojiPreload.empty()
 		? recentEmojiPreloadGenerated
 		: _recentEmojiPreload;
+	const auto noWarningExtensions = QStringList(
+		begin(_noWarningExtensions),
+		end(_noWarningExtensions)
+	).join(' ');
 
 	auto size = Serialize::bytearraySize(themesAccentColors)
 		+ sizeof(qint32) * 5
@@ -209,7 +215,10 @@ QByteArray Settings::serialize() const {
 		+ Serialize::stringSize(_playbackDeviceId.current())
 		+ Serialize::stringSize(_captureDeviceId.current())
 		+ Serialize::stringSize(_callPlaybackDeviceId.current())
-		+ Serialize::stringSize(_callCaptureDeviceId.current());
+		+ Serialize::stringSize(_callCaptureDeviceId.current())
+		+ Serialize::bytearraySize(ivPosition)
+		+ Serialize::stringSize(noWarningExtensions)
+		+ Serialize::stringSize(_customFontFamily);
 
 	auto result = QByteArray();
 	result.reserve(size);
@@ -249,7 +258,7 @@ QByteArray Settings::serialize() const {
 			<< qint32(_sendSubmitWay)
 			<< qint32(_includeMutedCounter ? 1 : 0)
 			<< qint32(_countUnreadMessages ? 1 : 0)
-			<< qint32(_exeLaunchWarning ? 1 : 0)
+			<< qint32(1) // legacy exe launch warning
 			<< qint32(_notifyAboutPinned.current() ? 1 : 0)
 			<< qint32(_loopAnimatedStickers ? 1 : 0)
 			<< qint32(_largeEmoji.current() ? 1 : 0)
@@ -353,7 +362,10 @@ QByteArray Settings::serialize() const {
 			<< _playbackDeviceId.current()
 			<< _captureDeviceId.current()
 			<< _callPlaybackDeviceId.current()
-			<< _callCaptureDeviceId.current();
+			<< _callCaptureDeviceId.current()
+			<< ivPosition
+			<< noWarningExtensions
+			<< _customFontFamily;
 	}
 
 	Ensures(result.size() == size);
@@ -402,7 +414,8 @@ void Settings::addFromSerialized(const QByteArray &serialized) {
 	qint32 sendSubmitWay = static_cast<qint32>(_sendSubmitWay);
 	qint32 includeMutedCounter = _includeMutedCounter ? 1 : 0;
 	qint32 countUnreadMessages = _countUnreadMessages ? 1 : 0;
-	qint32 exeLaunchWarning = _exeLaunchWarning ? 1 : 0;
+	std::optional<QString> noWarningExtensions;
+	qint32 legacyExeLaunchWarning = 1;
 	qint32 notifyAboutPinned = _notifyAboutPinned.current() ? 1 : 0;
 	qint32 loopAnimatedStickers = _loopAnimatedStickers ? 1 : 0;
 	qint32 largeEmoji = _largeEmoji.current() ? 1 : 0;
@@ -469,6 +482,8 @@ void Settings::addFromSerialized(const QByteArray &serialized) {
 	base::flat_set<QString> recentEmojiSkip;
 	qint32 trayIconMonochrome = (_trayIconMonochrome.current() ? 1 : 0);
 	qint32 ttlVoiceClickTooltipHidden = _ttlVoiceClickTooltipHidden.current() ? 1 : 0;
+	QByteArray ivPosition;
+	QString customFontFamily = _customFontFamily;
 
 	stream >> themesAccentColors;
 	if (!stream.atEnd()) {
@@ -508,7 +523,7 @@ void Settings::addFromSerialized(const QByteArray &serialized) {
 			>> sendSubmitWay
 			>> includeMutedCounter
 			>> countUnreadMessages
-			>> exeLaunchWarning
+			>> legacyExeLaunchWarning
 			>> notifyAboutPinned
 			>> loopAnimatedStickers
 			>> largeEmoji
@@ -747,6 +762,16 @@ void Settings::addFromSerialized(const QByteArray &serialized) {
 			? QString()
 			: legacyCallCaptureDeviceId;
 	}
+	if (!stream.atEnd()) {
+		stream >> ivPosition;
+	}
+	if (!stream.atEnd()) {
+		noWarningExtensions = QString();
+		stream >> *noWarningExtensions;
+	}
+	if (!stream.atEnd()) {
+		stream >> customFontFamily;
+	}
 	if (stream.status() != QDataStream::Ok) {
 		LOG(("App Error: "
 			"Bad data for Core::Settings::constructFromSerialized()"));
@@ -809,7 +834,12 @@ void Settings::addFromSerialized(const QByteArray &serialized) {
 	}
 	_includeMutedCounter = (includeMutedCounter == 1);
 	_countUnreadMessages = (countUnreadMessages == 1);
-	_exeLaunchWarning = (exeLaunchWarning == 1);
+	if (noWarningExtensions) {
+		const auto list = noWarningExtensions->mid(0, 10240)
+			.split(' ', Qt::SkipEmptyParts)
+			.mid(0, 1024);
+		_noWarningExtensions = base::flat_set<QString>(list.begin(), list.end());
+	}
 	_ipRevealWarning = (ipRevealWarning == 1);
 	_notifyAboutPinned = (notifyAboutPinned == 1);
 	_loopAnimatedStickers = (loopAnimatedStickers == 1);
@@ -945,6 +975,10 @@ void Settings::addFromSerialized(const QByteArray &serialized) {
 	_recentEmojiSkip = std::move(recentEmojiSkip);
 	_trayIconMonochrome = (trayIconMonochrome == 1);
 	_ttlVoiceClickTooltipHidden = (ttlVoiceClickTooltipHidden == 1);
+	if (!ivPosition.isEmpty()) {
+		_ivPosition = Deserialize(ivPosition);
+	}
+	_customFontFamily = customFontFamily;
 }
 
 QString Settings::getSoundPath(const QString &key) const {
@@ -1272,7 +1306,7 @@ void Settings::resetOnLastLogout() {
 	//_sendSubmitWay = Ui::InputSubmitSettings::Enter;
 	_soundOverrides = {};
 
-	_exeLaunchWarning = true;
+	_noWarningExtensions.clear();
 	_ipRevealWarning = true;
 	_loopAnimatedStickers = true;
 	_largeEmoji = true;
