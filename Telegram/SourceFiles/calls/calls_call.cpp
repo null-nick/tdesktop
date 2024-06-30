@@ -7,31 +7,29 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "calls/calls_call.h"
 
-#include "main/main_session.h"
-#include "main/main_account.h"
-#include "main/main_app_config.h"
 #include "apiwrap.h"
-#include "lang/lang_keys.h"
-#include "boxes/abstract_box.h"
-#include "ui/boxes/confirm_box.h"
-#include "ui/boxes/rate_call_box.h"
-#include "calls/calls_instance.h"
-#include "base/battery_saving.h"
 #include "base/openssl_help.h"
+#include "base/platform/base_platform_info.h"
 #include "base/random.h"
-#include "mtproto/mtproto_dh_utils.h"
-#include "mtproto/mtproto_config.h"
+#include "boxes/abstract_box.h"
+#include "calls/calls_instance.h"
+#include "calls/calls_panel.h"
 #include "core/application.h"
 #include "core/core_settings.h"
-#include "window/window_controller.h"
+#include "data/data_session.h"
+#include "data/data_user.h"
+#include "lang/lang_keys.h"
+#include "main/main_app_config.h"
+#include "main/main_session.h"
 #include "media/audio/media_audio_track.h"
-#include "base/platform/base_platform_info.h"
-#include "calls/calls_panel.h"
+#include "mtproto/mtproto_config.h"
+#include "mtproto/mtproto_dh_utils.h"
+#include "ui/boxes/confirm_box.h"
+#include "ui/boxes/rate_call_box.h"
+#include "webrtc/webrtc_create_adm.h"
 #include "webrtc/webrtc_environment.h"
 #include "webrtc/webrtc_video_track.h"
-#include "webrtc/webrtc_create_adm.h"
-#include "data/data_user.h"
-#include "data/data_session.h"
+#include "window/window_controller.h"
 
 #include <tgcalls/Instance.h>
 #include <tgcalls/VideoCaptureInterface.h>
@@ -708,7 +706,8 @@ bool Call::handleUpdate(const MTPPhoneCall &call) {
 			}
 		}
 		if (data.is_need_rating() && _id && _accessHash) {
-			const auto window = Core::App().windowFor(_user);
+			const auto window = Core::App().windowFor(
+				Window::SeparateId(_user));
 			const auto session = &_user->session();
 			const auto callId = _id;
 			const auto callAccessHash = _accessHash;
@@ -1072,6 +1071,7 @@ void Call::createAndStartController(const MTPDphoneCall &call) {
 		Core::App().mediaDevices().setCaptureMuted(muted);
 	}, _instanceLifetime);
 
+#if 0
 	Core::App().batterySaving().value(
 	) | rpl::start_with_next([=](bool isSaving) {
 		crl::on_main(weak, [=] {
@@ -1080,6 +1080,7 @@ void Call::createAndStartController(const MTPDphoneCall &call) {
 			}
 		});
 	}, _instanceLifetime);
+#endif
 }
 
 void Call::handleControllerStateChange(tgcalls::State state) {
@@ -1402,7 +1403,8 @@ void Call::handleRequestError(const QString &error) {
 			_user->name())
 		: QString();
 	if (!inform.isEmpty()) {
-		if (const auto window = Core::App().windowFor(_user)) {
+		if (const auto window = Core::App().windowFor(
+				Window::SeparateId(_user))) {
 			window->show(Ui::MakeInformBox(inform));
 		} else {
 			Ui::show(Ui::MakeInformBox(inform));
@@ -1420,7 +1422,8 @@ void Call::handleControllerError(const QString &error) {
 		? tr::lng_call_error_audio_io(tr::now)
 		: QString();
 	if (!inform.isEmpty()) {
-		if (const auto window = Core::App().windowFor(_user)) {
+		if (const auto window = Core::App().windowFor(
+				Window::SeparateId(_user))) {
 			window->show(Ui::MakeInformBox(inform));
 		} else {
 			Ui::show(Ui::MakeInformBox(inform));

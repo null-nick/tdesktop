@@ -244,8 +244,8 @@ QString FileExtension(const QString &filepath) {
 
 NameType DetectNameType(const QString &filepath) {
 	static const auto kImage = SplitExtensions(u"\
-afdesign ai avif bmp dng gif heic icns ico jfif jpeg jpg jpg-large nef png \
-png-large psd raw sketch svg tga tif tiff webp"_q);
+afdesign ai avif bmp dng gif heic icns ico jfif jpeg jpg jpg-large jxl nef \
+png png-large psd qoi raw sketch svg tga tif tiff webp"_q);
 	static const auto kVideo = SplitExtensions(u"\
 3g2 3gp 3gpp aep avi flv h264 m4s m4v mkv mov mp4 mpeg mpg ogv srt tgs tgv \
 vob webm wmv"_q);
@@ -285,7 +285,7 @@ pod prf prg ps1 ps2 ps1xml ps2xml psc1 psc2 psd1 psm1 pssc pst py py3 pyc \
 pyd pyi pyo pyw pyzw pyz rb reg rgs scf scr sct search-ms settingcontent-ms \
 sh shb shs slk sys swf t tmp u3p url vb vbe vbp vbs vbscript vdx vsmacros \
 vsd vsdm vsdx vss vssm vssx vst vstm vstx vsw vsx vtx website wlua ws wsc \
-wsf wsh xbap xll xlsm xnk xs"_q
+wsf wsh xbap xll xlsb xlsm xnk xs"_q
 #elif defined Q_OS_MAC // Q_OS_MAC
 		u"\
 applescript action app bin command csh osx workflow terminal url caction \

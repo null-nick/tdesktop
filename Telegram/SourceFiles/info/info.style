@@ -10,6 +10,7 @@ using "ui/basic.style";
 using "boxes/boxes.style";
 using "ui/widgets/widgets.style";
 using "ui/chat/chat.style"; // GroupCallUserpics.
+using "dialogs/dialogs.style"; // dialogsDateFont.
 
 InfoToggle {
 	color: color;
@@ -469,6 +470,24 @@ infoGroupMembersIconPosition: point(20px, 10px);
 infoChannelMembersIconPosition: point(20px, 19px);
 
 infoPersonalChannelIconPosition: point(25px, 20px);
+infoPersonalChannelNameLabel: FlatLabel(infoProfileStatus) {
+	textFg: windowBoldFg;
+	style: semiboldTextStyle;
+	maxHeight: 20px;
+}
+infoPersonalChannelDateSkip: 22px;
+infoPersonalChannelDateLabel: FlatLabel(infoProfileStatus) {
+	textFg: dialogsDateFg;
+	style: TextStyle(semiboldTextStyle) {
+		font: dialogsDateFont;
+	}
+	maxHeight: 20px;
+}
+infoPersonalChannelUserpicSkip: 3px;
+infoPersonalChannelUserpic: UserpicButton(defaultUserpicButton) {
+	size: size(42px, 42px);
+	photoSize: 42px;
+}
 
 infoBlockHeaderLabel: FlatLabel(infoProfileStatus) {
 	textFg: windowBoldFg;
@@ -646,6 +665,10 @@ manageGroupTopicsButton: SettingsCountButton(manageGroupTopButtonWithText) {
 		}
 	}
 }
+managePeerColorsButton: SettingsButton(infoProfileButton) {
+	padding: margins(60px, 10px, 48px, 8px);
+}
+
 manageGroupNoIconButtonInner: SettingsButton(infoProfileButton) {
 	padding: margins(25px, 11px, 24px, 8px);
 }
@@ -678,7 +701,7 @@ manageGroupReactionsField: InputField(defaultInputField) {
 	placeholderScale: 0.;
 	placeholderFont: normalFont;
 	placeholderShift: -50px;
-	font: normalFont;
+	style: defaultTextStyle;
 	heightMin: 36px;
 	heightMax: 158px;
 }
@@ -741,8 +764,6 @@ editPeerDescription: InputField(defaultInputField) {
 	borderActive: 0px;
 
 	heightMin: 32px;
-
-	font: boxTextFont;
 }
 editPeerDescriptionMargins: margins(22px, 3px, 22px, 2px);
 editPeerPrivaciesMargins: margins(15px, 7px, 22px, 0px);

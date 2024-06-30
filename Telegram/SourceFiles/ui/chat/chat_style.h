@@ -92,6 +92,7 @@ struct MessageStyle {
 	style::icon historyTranscribeLock = { Qt::Uninitialized };
 	style::icon historyTranscribeHide = { Qt::Uninitialized };
 	style::icon historyVoiceMessageTTL = { Qt::Uninitialized };
+	style::icon liveLocationLongIcon = { Qt::Uninitialized };
 	std::array<
 		std::unique_ptr<Text::QuotePaintCache>,
 		kColorPatternsCount> quoteCache;
@@ -222,6 +223,14 @@ struct ChatPaintContext {
 
 };
 
+struct ChatPaintContextArgs {
+	not_null<ChatTheme*> theme;
+	QRect clip;
+	QPoint visibleAreaPositionGlobal;
+	int visibleAreaTop = 0;
+	int visibleAreaWidth = 0;
+};
+
 [[nodiscard]] int HistoryServiceMsgRadius();
 [[nodiscard]] int HistoryServiceMsgInvertedRadius();
 [[nodiscard]] int HistoryServiceMsgInvertedShrink();
@@ -339,6 +348,9 @@ public:
 	}
 	[[nodiscard]] const style::TextPalette &serviceTextPalette() const {
 		return _serviceTextPalette;
+	}
+	[[nodiscard]] const style::TextPalette &priceTagTextPalette() const {
+		return _priceTagTextPalette;
 	}
 	[[nodiscard]] const style::icon &historyRepliesInvertedIcon() const {
 		return _historyRepliesInvertedIcon;
@@ -507,6 +519,7 @@ private:
 	style::TextPalette _historyPsaForwardPalette;
 	style::TextPalette _imgReplyTextPalette;
 	style::TextPalette _serviceTextPalette;
+	style::TextPalette _priceTagTextPalette;
 	style::icon _historyRepliesInvertedIcon = { Qt::Uninitialized };
 	style::icon _historyViewsInvertedIcon = { Qt::Uninitialized };
 	style::icon _historyViewsSendingIcon = { Qt::Uninitialized };

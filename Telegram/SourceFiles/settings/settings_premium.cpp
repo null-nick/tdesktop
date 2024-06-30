@@ -197,6 +197,7 @@ using Order = std::vector<QString>;
 		u"animated_userpics"_q,
 		u"premium_stickers"_q,
 		u"business"_q,
+		u"effects"_q,
 	};
 }
 
@@ -374,6 +375,16 @@ using Order = std::vector<QString>;
 				tr::lng_premium_summary_subtitle_business(),
 				tr::lng_premium_summary_about_business(),
 				PremiumFeature::Business,
+				true,
+			},
+		},
+		{
+			u"effects"_q,
+			Entry{
+				&st::settingsPremiumIconEffects,
+				tr::lng_premium_summary_subtitle_effects(),
+				tr::lng_premium_summary_about_effects(),
+				PremiumFeature::Effects,
 				true,
 			},
 		},
@@ -986,7 +997,7 @@ void Premium::setupContent() {
 		object_ptr<Ui::FlatLabel>(
 			content,
 			tr::lng_premium_summary_bottom_subtitle(
-			) | rpl::map(Ui::Text::Bold),
+			) | Ui::Text::ToBold(),
 			stLabel),
 		st::defaultSubsectionTitlePadding);
 	content->add(
@@ -1064,9 +1075,11 @@ QPointer<Ui::RpWidget> Premium::createPinnedToTop(
 		return Ui::CreateChild<Ui::Premium::TopBar>(
 			parent.get(),
 			st::defaultPremiumCover,
-			clickContextOther,
-			std::move(title),
-			std::move(about));
+			Ui::Premium::TopBarDescriptor{
+				.clickContextOther = clickContextOther,
+				.title = std::move(title),
+				.about = std::move(about),
+			});
 	}();
 	_setPaused = [=](bool paused) {
 		content->setPaused(paused);
@@ -1599,6 +1612,8 @@ std::vector<PremiumFeature> PremiumFeaturesOrder(
 			return PremiumFeature::RealTimeTranslation;
 		} else if (s == u"wallpapers"_q) {
 			return PremiumFeature::Wallpapers;
+		} else if (s == u"effects"_q) {
+			return PremiumFeature::Effects;
 		}
 		return PremiumFeature::kCount;
 	}) | ranges::views::filter([](PremiumFeature type) {
@@ -1630,7 +1645,7 @@ void AddSummaryPremium(
 		const auto label = content->add(
 			object_ptr<Ui::FlatLabel>(
 				content,
-				std::move(entry.title) | rpl::map(Ui::Text::Bold),
+				std::move(entry.title) | Ui::Text::ToBold(),
 				stLabel),
 			titlePadding);
 		label->setAttribute(Qt::WA_TransparentForMouseEvents);
