@@ -44,6 +44,8 @@ struct SponsoredFrom {
 	QString link;
 	QString buttonText;
 	PhotoId photoId = PhotoId(0);
+	PhotoId mediaPhotoId = PhotoId(0);
+	DocumentId mediaDocumentId = DocumentId(0);
 	uint64 backgroundEmojiId = 0;
 	uint8 colorIndex : 6 = 0;
 	bool isLinkInternal = false;
@@ -73,6 +75,8 @@ public:
 		QString link;
 		QString buttonText;
 		PhotoId photoId = PhotoId(0);
+		PhotoId mediaPhotoId = PhotoId(0);
+		DocumentId mediaDocumentId = DocumentId(0);
 		uint64 backgroundEmojiId = 0;
 		uint8 colorIndex : 6 = 0;
 		bool isLinkInternal = false;
@@ -86,7 +90,7 @@ public:
 	void request(not_null<History*> history, Fn<void()> done);
 	void clearItems(not_null<History*> history);
 	[[nodiscard]] Details lookupDetails(const FullMsgId &fullId) const;
-	void clicked(const FullMsgId &fullId);
+	void clicked(const FullMsgId &fullId, bool isMedia, bool isFullscreen);
 
 	[[nodiscard]] bool append(not_null<History*> history);
 	void inject(

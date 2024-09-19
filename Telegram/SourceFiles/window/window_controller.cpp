@@ -143,7 +143,6 @@ void Controller::showAccount(
 		MsgId singlePeerShowAtMsgId) {
 	Expects(isPrimary() || _id.account == account);
 
-	const auto prevAccount = _id.account;
 	const auto prevSession = maybeSession();
 	const auto prevSessionUniqueId = prevSession
 		? prevSession->uniqueId()
@@ -499,6 +498,15 @@ void Controller::invokeForSessionController(
 		: nullptr;
 	if (separateSession) {
 		return callback(separateSession);
+	}
+	const auto accountWindow = account
+		? Core::App().separateWindowFor(not_null(account))
+		: nullptr;
+	const auto accountSession = accountWindow
+		? accountWindow->sessionController()
+		: nullptr;
+	if (accountSession) {
+		return callback(accountSession);
 	}
 	_id.account->domain().activate(std::move(account));
 	if (_sessionController) {

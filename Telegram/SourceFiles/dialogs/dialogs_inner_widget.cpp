@@ -3690,6 +3690,9 @@ bool InnerWidget::chooseCollapsedRow(Qt::KeyboardModifiers modifiers) {
 }
 
 void InnerWidget::switchToFilter(FilterId filterId) {
+	if (_controller->windowId().type != Window::SeparateType::Primary) {
+		return;
+	}
 	const auto &list = session().data().chatsFilters().list();
 	const auto filterIt = filterId
 		? ranges::find(list, filterId, &Data::ChatFilter::id)
@@ -3811,7 +3814,9 @@ ChosenRow InnerWidget::computeChosenRow() const {
 
 bool InnerWidget::isUserpicPress() const {
 	return  (_lastRowLocalMouseX >= 0)
-		&& (_lastRowLocalMouseX < _st->nameLeft);
+		&& (_lastRowLocalMouseX < _st->nameLeft)
+		&& (_collapsedSelected < 0
+			|| _collapsedSelected >= _collapsedRows.size());
 }
 
 bool InnerWidget::isUserpicPressOnWide() const {

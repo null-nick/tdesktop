@@ -5,14 +5,15 @@ the official desktop application for the Telegram messaging service.
 For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
-#include "info/bot/earn/info_earn_widget.h"
+#include "info/channel_statistics/earn/info_channel_earn_widget.h"
 
-#include "info/bot/earn/info_earn_inner_widget.h"
+#include "info/channel_statistics/earn/info_channel_earn_list.h"
 #include "info/info_controller.h"
 #include "info/info_memento.h"
 #include "lang/lang_keys.h"
+#include "ui/ui_utility.h"
 
-namespace Info::BotEarn {
+namespace Info::ChannelEarn {
 
 Memento::Memento(not_null<Controller*> controller)
 : ContentMemento(Info::Statistics::Tag{
@@ -29,7 +30,7 @@ Memento::Memento(not_null<PeerData*> peer)
 Memento::~Memento() = default;
 
 Section Memento::section() const {
-	return Section(Section::Type::BotEarn);
+	return Section(Section::Type::ChannelEarn);
 }
 
 void Memento::setState(SavedState state) {
@@ -76,7 +77,7 @@ bool Widget::showInternal(not_null<ContentMemento*> memento) {
 }
 
 rpl::producer<QString> Widget::title() {
-	return tr::lng_bot_earn_title();
+	return tr::lng_channel_earn_title();
 }
 
 void Widget::setInternalState(
@@ -122,4 +123,4 @@ std::shared_ptr<Info::Memento> Make(not_null<PeerData*> peer) {
 			std::make_shared<Memento>(peer)));
 }
 
-} // namespace Info::BotEarn
+} // namespace Info::ChannelEarn

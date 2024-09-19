@@ -5,7 +5,7 @@ the official desktop application for the Telegram messaging service.
 For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
-#include "info/bot/earn/info_earn_inner_widget.h"
+#include "info/bot/earn/info_bot_earn_list.h"
 
 #include "api/api_credits.h"
 #include "api/api_filter_updates.h"
@@ -15,7 +15,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_session.h"
 #include "data/data_user.h"
 #include "data/stickers/data_custom_emoji.h"
-#include "info/bot/earn/info_earn_widget.h"
+#include "info/bot/earn/info_bot_earn_widget.h"
 #include "info/channel_statistics/earn/earn_format.h"
 #include "info/info_controller.h"
 #include "info/statistics/info_statistics_inner_widget.h" // FillLoading.
@@ -87,6 +87,7 @@ void InnerWidget::load() {
 
 	Info::Statistics::FillLoading(
 		this,
+		Info::Statistics::LoadingType::Earn,
 		_loaded.events_starting_with(false) | rpl::map(!rpl::mappers::_1),
 		_showFinished.events());
 
@@ -119,7 +120,6 @@ void InnerWidget::fill() {
 	const auto container = this;
 	const auto &data = _state;
 	const auto multiplier = data.usdRate * Data::kEarnMultiplier;
-	const auto session = &_peer->session();
 
 	auto availableBalanceValue = rpl::single(
 		data.availableBalance
@@ -192,7 +192,7 @@ void InnerWidget::fill() {
 			Ui::ToggleChildrenVisibility(line, true);
 
 			Ui::AddSkip(container);
-			const auto sub = container->add(
+			container->add(
 				object_ptr<Ui::FlatLabel>(
 					container,
 					text(),
@@ -262,7 +262,7 @@ void InnerWidget::fillHistory() {
 
 	const auto sectionIndex = history->lifetime().make_state<int>(0);
 
-	const auto fill = [=](
+	const auto fill = [=, peer = _peer](
 			not_null<PeerData*> premiumBot,
 			const Data::CreditsStatusSlice &fullSlice,
 			const Data::CreditsStatusSlice &inSlice,
@@ -353,24 +353,22 @@ void InnerWidget::fillHistory() {
 		}, inner->lifetime());
 
 		const auto controller = _controller->parentController();
-		const auto entryClicked = [=](const Data::CreditsHistoryEntry &e) {
+		const auto entryClicked = [=](
+				const Data::CreditsHistoryEntry &e,
+				const Data::SubscriptionEntry &s) {
 			controller->uiShow()->show(Box(
 				::Settings::ReceiptCreditsBox,
 				controller,
-				premiumBot.get(),
-				e));
+				e,
+				s));
 		};
-
-		const auto star = lifetime().make_state<QImage>(
-			Ui::GenerateStars(st::creditsTopupButton.height, 1));
 
 		Info::Statistics::AddCreditsHistoryList(
 			controller->uiShow(),
 			fullSlice,
 			fullWrap->entity(),
 			entryClicked,
-			premiumBot,
-			star,
+			peer,
 			true,
 			true);
 		Info::Statistics::AddCreditsHistoryList(
@@ -378,8 +376,7 @@ void InnerWidget::fillHistory() {
 			inSlice,
 			inWrap->entity(),
 			entryClicked,
-			premiumBot,
-			star,
+			peer,
 			true,
 			false);
 		Info::Statistics::AddCreditsHistoryList(
@@ -387,8 +384,7 @@ void InnerWidget::fillHistory() {
 			outSlice,
 			outWrap->entity(),
 			std::move(entryClicked),
-			premiumBot,
-			star,
+			peer,
 			false,
 			true);
 
@@ -399,11 +395,11 @@ void InnerWidget::fillHistory() {
 	const auto apiLifetime = history->lifetime().make_state<rpl::lifetime>();
 	rpl::single(rpl::empty) | rpl::then(
 		_stateUpdated.events()
-	) | rpl::start_with_next([=] {
+	) | rpl::start_with_next([=, peer = _peer] {
 		using Api = Api::CreditsHistory;
-		const auto apiFull = apiLifetime->make_state<Api>(_peer, true, true);
-		const auto apiIn = apiLifetime->make_state<Api>(_peer, true, false);
-		const auto apiOut = apiLifetime->make_state<Api>(_peer, false, true);
+		const auto apiFull = apiLifetime->make_state<Api>(peer, true, true);
+		const auto apiIn = apiLifetime->make_state<Api>(peer, true, false);
+		const auto apiOut = apiLifetime->make_state<Api>(peer, false, true);
 		apiFull->request({}, [=](Data::CreditsStatusSlice fullSlice) {
 			apiIn->request({}, [=](Data::CreditsStatusSlice inSlice) {
 				apiOut->request({}, [=](Data::CreditsStatusSlice outSlice) {

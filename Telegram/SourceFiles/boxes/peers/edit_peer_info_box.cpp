@@ -43,7 +43,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_premium_limits.h"
 #include "data/data_user.h"
 #include "history/admin_log/history_admin_log_section.h"
-#include "info/bot/earn/info_earn_widget.h"
+#include "info/bot/earn/info_bot_earn_widget.h"
 #include "info/channel_statistics/boosts/info_boosts_widget.h"
 #include "info/profile/info_profile_values.h"
 #include "info/info_memento.h"
@@ -67,6 +67,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/wrap/padding_wrap.h"
 #include "ui/wrap/slide_wrap.h"
 #include "ui/wrap/vertical_layout.h"
+#include "ui/ui_utility.h"
 #include "window/window_session_controller.h"
 #include "api/api_invite_links.h"
 #include "styles/style_chat_helpers.h"
@@ -318,6 +319,7 @@ private:
 		std::optional<bool> hiddenPreHistory;
 		std::optional<bool> forum;
 		std::optional<bool> signatures;
+		std::optional<bool> signatureProfiles;
 		std::optional<bool> noForwards;
 		std::optional<bool> joinToWrite;
 		std::optional<bool> requestToJoin;
@@ -408,6 +410,7 @@ private:
 	std::optional<EditPeerTypeData> _typeDataSavedValue;
 	std::optional<bool> _forumSavedValue;
 	std::optional<bool> _signaturesSavedValue;
+	std::optional<bool> _signatureProfilesSavedValue;
 
 	const not_null<Window::SessionNavigation*> _navigation;
 	const not_null<Ui::BoxContent*> _box;
@@ -620,13 +623,17 @@ object_ptr<Ui::RpWidget> Controller::createTitleEdit() {
 				local.x() + emojiToggle->width() * 3);
 		};
 
-		base::install_event_filter(container, [=](not_null<QEvent*> event) {
-			const auto type = event->type();
-			if (type == QEvent::Move || type == QEvent::Resize) {
-				crl::on_main(field, [=] { updateEmojiPanelGeometry(); });
-			}
-			return base::EventFilterResult::Continue;
-		});
+
+		field->lifetime().make_state<base::unique_qptr<QObject>>([&] {
+			return base::install_event_filter(container, [=](
+					not_null<QEvent*> event) {
+				const auto type = event->type();
+				if (type == QEvent::Move || type == QEvent::Resize) {
+					crl::on_main(field, [=] { updateEmojiPanelGeometry(); });
+				}
+				return base::EventFilterResult::Continue;
+			});
+		}());
 
 		field->widthValue() | rpl::start_with_next([=](int width) {
 			const auto &p = st::editPeerTitleEmojiPosition;
@@ -1051,17 +1058,50 @@ void Controller::fillSignaturesButton() {
 		return;
 	}
 
-	AddButtonWithText(
+	const auto signs = AddButtonWithText(
 		_controls.buttonsLayout,
 		tr::lng_edit_sign_messages(),
 		rpl::single(QString()),
 		[] {},
 		{ &st::menuIconSigned }
-	)->toggleOn(rpl::single(channel->addsSignature())
-	)->toggledValue(
+	)->toggleOn(rpl::single(channel->addsSignature()));
+
+	const auto profiles = _controls.buttonsLayout->add(
+		object_ptr<Ui::SlideWrap<Ui::SettingsButton>>(
+			_controls.buttonsLayout,
+			EditPeerInfoBox::CreateButton(
+				_controls.buttonsLayout,
+				tr::lng_edit_sign_profiles(),
+				rpl::single(QString()),
+				[] {},
+				st::manageGroupTopButtonWithText,
+				{ &st::menuIconProfile })));
+	profiles->toggleOn(signs->toggledValue());
+	profiles->finishAnimating();
+
+	profiles->entity()->toggleOn(rpl::single(
+		channel->addsSignature() && channel->signatureProfiles()
+	))->toggledValue(
+	) | rpl::start_with_next([=](bool toggled) {
+		_signatureProfilesSavedValue = toggled;
+	}, profiles->entity()->lifetime());
+
+	signs->toggledValue(
 	) | rpl::start_with_next([=](bool toggled) {
 		_signaturesSavedValue = toggled;
+		if (!toggled) {
+			_signatureProfilesSavedValue = false;
+		}
 	}, _controls.buttonsLayout->lifetime());
+
+	Ui::AddSkip(_controls.buttonsLayout);
+	Ui::AddDividerText(
+		_controls.buttonsLayout,
+		rpl::conditional(
+			signs->toggledValue(),
+			tr::lng_edit_sign_profiles_about(Ui::Text::WithEntities),
+			tr::lng_edit_sign_messages_about(Ui::Text::WithEntities)));
+	Ui::AddSkip(_controls.buttonsLayout);
 }
 
 void Controller::fillHistoryVisibilityButton() {
@@ -1219,11 +1259,9 @@ void Controller::fillManageSection() {
 	}
 	if (canEditSignatures) {
 		fillSignaturesButton();
-	}
-	if (canEditPreHistoryHidden
+	} else if (canEditPreHistoryHidden
 		|| canEditForum
 		|| canEditColorIndex
-		|| canEditSignatures
 		//|| canEditInviteLinks
 		|| canViewOrEditLinkedChat
 		|| canEditType) {
@@ -1586,7 +1624,6 @@ void Controller::fillBotBalanceButton() {
 		const auto icon = Ui::CreateChild<Ui::RpWidget>(button);
 		icon->resize(Size(st::menuIconLinks.width() - kSizeShift));
 
-		const auto bg = st::boxBg->c;
 		auto colorized = [&] {
 			auto f = QFile(Ui::Premium::Svg());
 			if (!f.open(QIODevice::ReadOnly)) {
@@ -1780,10 +1817,14 @@ bool Controller::validateForum(Saving &to) const {
 }
 
 bool Controller::validateSignatures(Saving &to) const {
+	Expects(_signaturesSavedValue.has_value()
+		== _signatureProfilesSavedValue.has_value());
+
 	if (!_signaturesSavedValue.has_value()) {
 		return true;
 	}
 	to.signatures = _signaturesSavedValue;
+	to.signatureProfiles = _signatureProfilesSavedValue;
 	return true;
 }
 
@@ -2201,8 +2242,11 @@ void Controller::saveForum() {
 		channel->inputChannel,
 		MTP_bool(*_savingData.forum)
 	)).done([=](const MTPUpdates &result) {
+		const auto weak = base::make_weak(this);
 		channel->session().api().applyUpdates(result);
-		continueSave();
+		if (weak) { // todo better to be able to save in closed already box.
+			continueSave();
+		}
 	}).fail([=](const MTP::Error &error) {
 		if (error.type() == u"CHAT_NOT_MODIFIED"_q) {
 			continueSave();
@@ -2213,15 +2257,27 @@ void Controller::saveForum() {
 }
 
 void Controller::saveSignatures() {
+	Expects(_savingData.signatures.has_value()
+		== _savingData.signatureProfiles.has_value());
+
 	const auto channel = _peer->asChannel();
 	if (!_savingData.signatures
 		|| !channel
-		|| *_savingData.signatures == channel->addsSignature()) {
+		|| ((*_savingData.signatures == channel->addsSignature())
+			&& (*_savingData.signatureProfiles
+				== channel->signatureProfiles()))) {
 		return continueSave();
 	}
+	using Flag = MTPchannels_ToggleSignatures::Flag;
 	_api.request(MTPchannels_ToggleSignatures(
-		channel->inputChannel,
-		MTP_bool(*_savingData.signatures)
+		MTP_flags(Flag()
+			| (*_savingData.signatures
+				? Flag::f_signatures_enabled
+				: Flag())
+			| (*_savingData.signatureProfiles
+				? Flag::f_profiles_enabled
+				: Flag())),
+		channel->inputChannel
 	)).done([=](const MTPUpdates &result) {
 		channel->session().api().applyUpdates(result);
 		continueSave();

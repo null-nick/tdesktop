@@ -17,7 +17,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "window/window_controller.h"
 #include "window/window_filters_menu.h"
 #include "window/window_separate_id.h"
-#include "info/channel_statistics/earn/info_earn_inner_widget.h"
+#include "info/channel_statistics/earn/info_channel_earn_list.h"
 #include "info/info_memento.h"
 #include "info/info_controller.h"
 #include "inline_bots/bot_attach_web_view.h"
@@ -73,6 +73,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/boxes/collectible_info_box.h"
 #include "ui/boxes/confirm_box.h"
 #include "ui/dynamic_thumbnails.h"
+#include "ui/ui_utility.h"
 #include "mainwidget.h"
 #include "main/main_app_config.h"
 #include "main/main_domain.h"
@@ -577,6 +578,8 @@ void SessionNavigation::showPeerByLinkResolved(
 			info.messageId,
 			commentId->id,
 			params);
+	} else if (resolveType == ResolveType::Profile) {
+		showPeerInfo(peer, params);
 	} else if (peer->isForum() && resolveType != ResolveType::Boost) {
 		const auto itemId = info.messageId;
 		if (!itemId) {
@@ -614,17 +617,23 @@ void SessionNavigation::showPeerByLinkResolved(
 		const auto contextPeer = item
 			? item->history()->peer
 			: bot;
-		const auto action = bot->session().attachWebView().lookupLastAction(
-			info.clickFromAttachBotWebviewUrl
-		).value_or(Api::SendAction(bot->owner().history(contextPeer)));
+		const auto action = info.clickFromBotWebviewContext
+			? info.clickFromBotWebviewContext->action
+			: Api::SendAction(bot->owner().history(contextPeer));
 		crl::on_main(this, [=] {
-			bot->session().attachWebView().requestApp(
-				parentController(),
-				action,
-				bot,
-				info.botAppName,
-				info.startToken,
-				info.botAppForceConfirmation);
+			bot->session().attachWebView().open({
+				.bot = bot,
+				.context = {
+					.controller = parentController(),
+					.action = action,
+					.maySkipConfirmation = !info.botAppForceConfirmation,
+				},
+				.button = { .startCommand = info.startToken },
+				.source = InlineBots::WebViewSourceLinkApp{
+					.appname = info.botAppName,
+					.token = info.startToken,
+				},
+			});
 		});
 	} else if (bot && resolveType == ResolveType::ShareGame) {
 		Window::ShowShareGameBox(parentController(), bot, info.startToken);
@@ -672,20 +681,25 @@ void SessionNavigation::showPeerByLinkResolved(
 			crl::on_main(this, [=] {
 				const auto history = peer->owner().history(peer);
 				showPeerHistory(history, params, msgId);
-				peer->session().attachWebView().request(
+
+				peer->session().attachWebView().openByUsername(
 					parentController(),
 					Api::SendAction(history),
 					attachBotUsername,
 					info.attachBotToggleCommand.value_or(QString()));
 			});
-		} else if (bot && info.attachBotMenuOpen) {
+		} else if (bot && info.attachBotMainOpen) {
 			const auto startCommand = info.attachBotToggleCommand.value_or(
 				QString());
-			bot->session().attachWebView().requestAddToMenu(
-				bot,
-				InlineBots::AddToMenuOpenMenu{ startCommand },
-				parentController(),
-				std::optional<Api::SendAction>());
+			bot->session().attachWebView().open({
+				.bot = bot,
+				.context = { .controller = parentController() },
+				.button = { .startCommand = startCommand },
+				.source = InlineBots::WebViewSourceLinkBotProfile{
+					.token = startCommand,
+					.compact = info.attachBotMainCompact,
+				},
+			});
 		} else if (bot && info.attachBotToggleCommand) {
 			const auto itemId = info.clickFromMessageId;
 			const auto item = _session->data().message(itemId);
@@ -695,17 +709,21 @@ void SessionNavigation::showPeerByLinkResolved(
 			const auto contextUser = contextPeer
 				? contextPeer->asUser()
 				: nullptr;
-			bot->session().attachWebView().requestAddToMenu(
-				bot,
-				InlineBots::AddToMenuOpenAttach{
-					.startCommand = *info.attachBotToggleCommand,
-					.chooseTypes = info.attachBotChooseTypes,
+			bot->session().attachWebView().open({
+				.bot = bot,
+				.context = {
+					.controller = parentController(),
+					.action = (contextUser
+						? Api::SendAction(
+							contextUser->owner().history(contextUser))
+						: std::optional<Api::SendAction>()),
 				},
-				parentController(),
-				(contextUser
-					? Api::SendAction(
-						contextUser->owner().history(contextUser))
-					: std::optional<Api::SendAction>()));
+				.button = { .startCommand = *info.attachBotToggleCommand },
+				.source = InlineBots::WebViewSourceLinkAttachMenu{
+					.choose = info.attachBotChooseTypes,
+					.token = *info.attachBotToggleCommand,
+				},
+			});
 		} else {
 			const auto draft = info.text;
 			crl::on_main(this, [=] {
@@ -1660,8 +1678,9 @@ void SessionController::showForum(
 	) | rpl::start_with_next([=, history = forum->history()] {
 		const auto now = activeChatCurrent().owningHistory();
 		const auto showHistory = !now || (now == history);
+		const auto weak = base::make_weak(this);
 		closeForum();
-		if (showHistory) {
+		if (weak && showHistory) {
 			showPeerHistory(history, {
 				SectionShow::Way::Backward,
 				anim::type::normal,
@@ -1676,7 +1695,7 @@ void SessionController::closeForum() {
 	if (const auto forum = _shownForum.current()) {
 		const auto id = windowId();
 		if (id.type == SeparateType::Forum) {
-			const auto initial = id.thread->asForum();
+			const auto initial = id.forum();
 			if (!initial || initial == forum) {
 				Core::App().closeWindow(_window);
 			} else {
@@ -2469,11 +2488,11 @@ void SessionController::showMessage(
 					std::make_shared<HistoryView::ScheduledMemento>(
 						item->history()),
 					params);
+				if (params.activation != anim::activation::background) {
+					controller->window().activate();
+				}
 			} else {
 				controller->content()->showMessage(item, params);
-			}
-			if (params.activation != anim::activation::background) {
-				controller->window().activate();
 			}
 		});
 }
@@ -2529,7 +2548,13 @@ void SessionController::showBackFromStack(const SectionShow &params) {
 		return topic && topic->forum()->topicDeleted(topic->rootId());
 	};
 	do {
-		content()->showBackFromStack(params);
+		const auto empty = content()->stackIsEmpty();
+		const auto shown = content()->showBackFromStack(params);
+		if (empty && !shown && content()->stackIsEmpty() && bad()) {
+			clearSectionStack(anim::type::instant);
+			window().close();
+			break;
+		}
 	} while (bad());
 }
 

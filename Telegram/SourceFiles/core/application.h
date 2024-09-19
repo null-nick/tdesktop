@@ -126,6 +126,8 @@ enum class QuitReason {
 	QtQuitEvent,
 };
 
+extern const char kOptionSkipUrlSchemeRegister[];
+
 class Application final : public QObject {
 public:
 	struct ProxyChange {
@@ -207,7 +209,7 @@ public:
 	void saveSettingsDelayed(crl::time delay = kDefaultSaveDelay);
 	void saveSettings();
 
-	[[nodiscard]] bool canReadDefaultDownloadPath(bool always = false) const;
+	[[nodiscard]] bool canReadDefaultDownloadPath() const;
 	[[nodiscard]] bool canSaveFileWithoutAskingForPath() const;
 
 	// Fallback config and proxy.
@@ -349,6 +351,7 @@ private:
 	friend bool IsAppLaunched();
 	friend Application &App();
 
+	void autoRegisterUrlScheme();
 	void clearEmojiSourceImages();
 	[[nodiscard]] auto prepareEmojiSourceImages()
 		-> std::shared_ptr<Ui::Emoji::UniversalImages>;
@@ -375,6 +378,7 @@ private:
 
 	void showOpenGLCrashNotification();
 	void clearPasscodeLock();
+	void closeAdditionalWindows();
 
 	bool openCustomUrl(
 		const QString &protocol,

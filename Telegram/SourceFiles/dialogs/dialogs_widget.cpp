@@ -78,6 +78,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_stories.h"
 #include "info/downloads/info_downloads_widget.h"
 #include "info/info_memento.h"
+#include "inline_bots/bot_attach_web_view.h"
 #include "styles/style_dialogs.h"
 #include "styles/style_chat.h"
 #include "styles/style_chat_helpers.h"
@@ -890,6 +891,7 @@ void Widget::setupMainMenuToggle() {
 	}, lifetime());
 
 	Window::OtherAccountsUnreadState(
+		&controller()->session().account()
 	) | rpl::start_with_next([=](const Window::OthersUnreadState &state) {
 		const auto icon = !state.count
 			? nullptr
@@ -1265,6 +1267,27 @@ void Widget::updateSuggestions(anim::type animated) {
 			}
 		}, _suggestions->lifetime());
 
+		_suggestions->recentAppChosen(
+		) | rpl::start_with_next([=](not_null<PeerData*> peer) {
+			if (const auto user = peer->asUser()) {
+				if (const auto info = user->botInfo.get()) {
+					if (info->hasMainApp) {
+						openBotMainApp(user);
+						return;
+					}
+				}
+			}
+			chosenRow({
+				.key = peer->owner().history(peer),
+				.newWindow = base::IsCtrlPressed(),
+			});
+		}, _suggestions->lifetime());
+
+		_suggestions->popularAppChosen(
+		) | rpl::start_with_next([=](not_null<PeerData*> peer) {
+			controller()->showPeerInfo(peer);
+		}, _suggestions->lifetime());
+
 		updateControlsGeometry();
 
 		_suggestions->show(animated, [=] {
@@ -1274,6 +1297,17 @@ void Widget::updateSuggestions(anim::type animated) {
 	} else {
 		updateStoriesVisibility();
 	}
+}
+
+void Widget::openBotMainApp(not_null<UserData*> bot) {
+	session().attachWebView().open({
+		.bot = bot,
+		.context = {
+			.controller = controller(),
+			.maySkipConfirmation = true,
+		},
+		.source = InlineBots::WebViewSourceBotProfile(),
+	});
 }
 
 void Widget::changeOpenedSubsection(
@@ -3293,7 +3327,9 @@ void Widget::updateControlsGeometry() {
 	}
 
 	const auto wasScrollTop = _scroll->scrollTop();
-	const auto newScrollTop = (_topDelta < 0 && wasScrollTop <= 0)
+	const auto newScrollTop = (wasScrollTop == 0)
+		? wasScrollTop
+		: (_topDelta < 0 && wasScrollTop <= 0)
 		? wasScrollTop
 		: (wasScrollTop + _topDelta);
 
